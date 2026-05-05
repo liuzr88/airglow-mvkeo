@@ -20,15 +20,19 @@ def test_datenum_array():
 
 def test_read_night_minimal_nc(tmp_path):
     n = 5
-    intensity = (np.arange(n*4*4, dtype=np.float32).reshape(4, 4, n))
-    time = np.array([737791.0 + i/24/60 for i in range(n)])
+    # Real schema: intensity has dims (time, y, x) — shape (N, Y, X)
+    intensity = np.arange(n * 4 * 4, dtype=np.float32).reshape(n, 4, 4)
+    # time values are days-from-Jan-1 (0.0 = Jan 1 00:00 UTC)
+    time = np.array([i / (24 * 60) for i in range(n)])
     ds = xr.Dataset({
-        "intensity": (("y", "x", "t"), intensity),
-        "time": (("t",), time),
+        "intensity": (("time", "y", "x"), intensity),
+        "time": (("time",), time),
+        "year": ((), np.uint16(2020)),
     })
     p = tmp_path / "OH20200101.nc"
     ds.to_netcdf(p)
     night = read_night(p)
+    # After transpose("y","x","time") the shape should be (Y, X, N) = (4, 4, 5)
     assert night.intensity.shape == (4, 4, 5)
     assert night.times[0].year == 2020
     assert night.band == "OH"

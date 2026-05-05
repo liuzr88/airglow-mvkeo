@@ -50,12 +50,31 @@ def parse_filename(p: Path) -> tuple[str, date]:
     s = m.group("date")
     return band, date(int(s[:4]), int(s[4:6]), int(s[6:8]))
 
+def day_of_year_to_datetime(t: float, year: int) -> datetime:
+    """Convert a days-from-Jan-1 value (as stored in Step-3 NetCDF files) to a
+    UTC datetime.  ``t=0.0`` is midnight on Jan 1 of *year*."""
+    return datetime(year, 1, 1, tzinfo=timezone.utc) + timedelta(days=float(t))
+
+
 def read_night(path: str | Path) -> NightData:
     p = Path(path)
     band, d = parse_filename(p)
     with xr.open_dataset(p) as ds:
-        intensity = np.asarray(ds["intensity"].values, dtype=np.float32)
-        times = matlab_datenum_to_datetime(ds["time"].values)
+        # Axis order from AirglowFITS2NC.m is (time, y, x) after xarray reads
+        # the MATLAB column-major (x, y, time) layout.  Transpose to (y, x, time)
+        # so the rest of the pipeline sees shape (Y, X, N).
+        intensity = np.asarray(
+            ds["intensity"].transpose("y", "x", "time").values, dtype=np.float32
+        )
+        # Time values are days-from-Jan-1 of the observation year (not raw
+        # MATLAB datenums).  Read the year scalar; fall back to the filename.
+        if "year" in ds:
+            year = int(ds["year"].values)
+        else:
+            year = d.year
+        times = np.array(
+            [day_of_year_to_datetime(float(t), year) for t in ds["time"].values]
+        )
     return NightData(intensity=intensity, times=times, band=band, date=d, source_path=p)
 
 def output_paths(out_dir: str | Path, band: str, d: date) -> OutputPaths:

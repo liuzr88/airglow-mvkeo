@@ -15,20 +15,21 @@ ffmpeg = shutil.which("ffmpeg")
 ffprobe = shutil.which("ffprobe")
 pytestmark = pytest.mark.skipif(not (ffmpeg and ffprobe), reason="ffmpeg/ffprobe not on PATH")
 
-def _make_synthetic_nc(path: Path, n_frames: int = 30, h: int = 64, w: int = 64):
+def _make_synthetic_nc(path: Path, n_frames: int = 30, h: int = 64, w: int = 64,
+                       year: int = 2018):
     rng = np.random.default_rng(0)
-    intensity = rng.normal(2000, 150, size=(h, w, n_frames)).astype(np.float32)
+    intensity = rng.normal(2000, 150, size=(n_frames, h, w)).astype(np.float32)
     yy, xx = np.meshgrid(np.arange(h), np.arange(w), indexing="ij")
     for i in range(n_frames):
         cx, cy = w/2 + (i - n_frames/2) * 0.5, h/2
         blob = 800.0 * np.exp(-((xx - cx)**2 + (yy - cy)**2) / (2 * 4**2))
-        intensity[..., i] += blob
-    # MATLAB datenum 737061 corresponds to 2018-01-01 (verify in test).
-    base = 737061.0 + 3/24
-    time = base + np.arange(n_frames) / (24 * 60)
+        intensity[i] += blob
+    # day-of-year, starting at 0 (Jan 1 00:00) + 3 hours, 1-min cadence
+    time = (3.0 / 24) + np.arange(n_frames) / (24.0 * 60.0)
     ds = xr.Dataset({
-        "intensity": (("y", "x", "t"), intensity),
-        "time": (("t",), time),
+        "intensity": (("time", "y", "x"), intensity),
+        "time": (("time",), time),
+        "year": ((), np.uint16(year)),
     })
     ds.to_netcdf(path)
 
