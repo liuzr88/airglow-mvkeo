@@ -1,0 +1,95 @@
+[site]
+name = "ALO"
+lat_deg = -30.251807
+lon_deg = -70.738199
+label = "(30.24°S, 70.74°W)"
+ut_offset_hours = -5
+
+[bands.OH]
+altitude_km = 87
+[bands.O5]
+altitude_km = 96
+
+[image]
+size_px = 512
+fov_deg = 180
+
+# Date-keyed calibration; lookup picks the latest entry whose `since` ≤ image date.
+[[calibration]]
+since = "2011-08-01"
+x0 = 277
+y0 = 256
+R = 256
+P = 1.8
+
+[[calibration]]
+since = "2011-08-21"
+x0 = 277
+y0 = 263
+R = 256
+P = 1.6
+
+[[calibration]]
+since = "2011-08-23"
+x0 = 273
+y0 = 259
+R = 256
+P = 1.6
+
+[[calibration]]
+since = "2011-08-25"
+x0 = 273
+y0 = 252
+R = 256
+P = 1.6
+
+[[calibration]]
+since = "2013-03-21"
+x0 = 269
+y0 = 253
+R = 256
+P = 1.6
+
+[[markers]]
+name = "GEMINIS"
+az_deg = 82
+r_frac = 0.89
+
+[[markers]]
+name = "SOAR"
+az_deg = 72
+r_frac = 0.91
+
+[[markers]]
+name = "CTIO"
+az_deg = 125
+r_frac = 0.91
+
+[movie]
+fps_normal = 30
+fps_low_cadence = 15
+crf = 18
+codec = "libx264"
+pix_fmt = "yuv420p"
+colormap = "bone"
+colormap_crop = [4, 124]
+
+[keogram]
+format = "jpg"
+dpi = 200
+colormap = "gray"
+colormap_crop = [10, 128]
+distance_ticks_km = [-800, -500, -200, -100, -50, 0, 50, 100, 200, 500, 800]
+distance_tick_labels = ["-800", "-500", "-200", "-100", "-50", "0", "+50", "+100", "+200", "+500", "800"]
+gap_threshold_factor = 2.05
+
+[difference]
+window_minutes = 60
+clip_sigma = 2.0
+
+[filter]
+overexposed_mean_threshold = 1e4
+min_frames = 10
+min_usable_at_low = 10
+low_intensity_threshold = 5e3
+color_range_percentiles = [10, 80]
