@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import matplotlib
 
+
 def apply_colormap(image: np.ndarray, vmin: float, vmax: float,
                    name: str, crop: tuple[int, int]) -> np.ndarray:
     """Scale `image` to [0,1], apply named matplotlib colormap with crop, → uint8 RGB."""
@@ -15,11 +16,30 @@ def apply_colormap(image: np.ndarray, vmin: float, vmax: float,
     idx = (norm * (n - 1)).astype(np.uint16)
     return table[idx]
 
+
 def _to_pil(rgb: np.ndarray) -> Image.Image:
     return Image.fromarray(rgb, mode="RGB")
 
+
 def _to_array(img: Image.Image) -> np.ndarray:
     return np.asarray(img)
+
+
+def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    try:
+        return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
+    except OSError:
+        return ImageFont.load_default()
+
+
+def _draw_text_with_outline(d: ImageDraw.ImageDraw, x: int, y: int, text: str,
+                             font, fill=(255, 255, 255),
+                             outline=(0, 0, 0)) -> None:
+    """Draw text with a 1-pixel black outline for readability."""
+    for dx, dy in ((-1, -1), (-1, 1), (1, -1), (1, 1)):
+        d.text((x + dx, y + dy), text, fill=outline, font=font)
+    d.text((x, y), text, fill=fill, font=font)
+
 
 def draw_zenith_ring(rgb: np.ndarray, cx: int, cy: int, radius: int,
                      color: tuple[int, int, int] = (0, 0, 0),
@@ -29,6 +49,7 @@ def draw_zenith_ring(rgb: np.ndarray, cx: int, cy: int, radius: int,
     d.ellipse([cx - radius, cy - radius, cx + radius, cy + radius],
               outline=color, width=width)
     return _to_array(img)
+
 
 def draw_crosshair(rgb: np.ndarray, cx: int, cy: int, half_len: int,
                    color_outer=(255, 255, 255), color_inner=(0, 0, 0),
@@ -42,15 +63,13 @@ def draw_crosshair(rgb: np.ndarray, cx: int, cy: int, half_len: int,
     d.line([cx, cy - half_len, cx, cy + half_len], fill=color_outer, width=width_inner)
     return _to_array(img)
 
+
 def draw_text_corner(rgb: np.ndarray, lines: list[str], anchor: str,
                      color=(255, 255, 255), font_size: int = 14) -> np.ndarray:
     """Draw text at one of the four corners. anchor in {'tl','tr','bl','br'}."""
     img = _to_pil(rgb)
     d = ImageDraw.Draw(img)
-    try:
-        font = ImageFont.truetype("DejaVuSans-Bold.ttf", font_size)
-    except OSError:
-        font = ImageFont.load_default()
+    font = _load_font(font_size)
     h, w = rgb.shape[:2]
     pad = 6
     for i, text in enumerate(lines):
@@ -62,8 +81,9 @@ def draw_text_corner(rgb: np.ndarray, lines: list[str], anchor: str,
         elif anchor == "bl": x, y = pad, h - (len(lines) - i) * (th + 2) - pad
         elif anchor == "br": x, y = w - tw - pad, h - (len(lines) - i) * (th + 2) - pad
         else: raise ValueError(f"bad anchor {anchor}")
-        d.text((x, y), text, fill=color, font=font)
+        _draw_text_with_outline(d, x, y, text, font=font, fill=color)
     return _to_array(img)
+
 
 def draw_marker(rgb: np.ndarray, cx: int, cy: int, R: int,
                 az_deg: float, r_frac: float, label: str,
@@ -75,31 +95,151 @@ def draw_marker(rgb: np.ndarray, cx: int, cy: int, R: int,
     py = int(cy + r_frac * R * np.sin(rad))
     img = _to_pil(rgb)
     d = ImageDraw.Draw(img)
-    try:
-        font = ImageFont.truetype("DejaVuSans-Bold.ttf", font_size)
-    except OSError:
-        font = ImageFont.load_default()
-    d.text((px - 4, py - 8), "+", fill=color, font=font)
-    d.text((px - 12, py + 6), label, fill=color, font=font)
+    font = _load_font(font_size)
+    _draw_text_with_outline(d, px - 4, py - 8, "+", font=font, fill=color)
+    _draw_text_with_outline(d, px - 12, py + 6, label, font=font, fill=color)
     return _to_array(img)
+
+
+def draw_compass_rose(rgb: np.ndarray, cx: int = 40, cy: int = -1,
+                      size: int = 15, color=(255, 255, 255)) -> np.ndarray:
+    """Draw a compass rose (crosshair + N/S/W/E labels) at (cx, cy).
+
+    Replicates ReadNcOrig.m lines 307-338.  MATLAB uses Ydir Normal so its
+    y=65 is near the top; in PIL y=0 is the top, so N is placed *above* the
+    crosshair centre (smaller y) and S *below* it.
+
+    cx, cy are in PIL pixel coords.  Pass cy=-1 to auto-place at H-40.
+    """
+    H = rgb.shape[0]
+    if cy < 0:
+        cy = H - 40
+
+    img = _to_pil(rgb)
+    d = ImageDraw.Draw(img)
+    half = size  # half-length of the crosshair arms
+
+    # Outer white wide line, inner black thin line (matches MATLAB 307-314)
+    white, black = (255, 255, 255), (0, 0, 0)
+    d.line([cx, cy - half, cx, cy + half], fill=white, width=3)
+    d.line([cx - half, cy, cx + half, cy], fill=white, width=3)
+    d.line([cx, cy - half, cx, cy + half], fill=black, width=1)
+    d.line([cx - half, cy, cx + half, cy], fill=black, width=1)
+
+    # North pointer: small wedge above the crosshair (MATLAB lines 311-314)
+    # Two diagonal lines meeting at the top of the N arm
+    tip_y = cy - half
+    base_offset = 4
+    d.line([cx - base_offset, tip_y + 10, cx, tip_y], fill=white, width=3)
+    d.line([cx + base_offset, tip_y + 10, cx, tip_y], fill=white, width=3)
+    d.line([cx - base_offset, tip_y + 10, cx, tip_y], fill=black, width=1)
+    d.line([cx + base_offset, tip_y + 10, cx, tip_y], fill=black, width=1)
+
+    font = _load_font(13)
+    label_offset = half + 12
+    # N above centre (smaller y in PIL = up), S below, W left, E right
+    _draw_text_with_outline(d, cx - 4, cy - label_offset - 8, "N", font=font,
+                            fill=color, outline=black)
+    _draw_text_with_outline(d, cx - 4, cy + label_offset - 2, "S", font=font,
+                            fill=color, outline=black)
+    _draw_text_with_outline(d, cx - label_offset - 8, cy - 6, "W", font=font,
+                            fill=color, outline=black)
+    _draw_text_with_outline(d, cx + label_offset, cy - 6, "E", font=font,
+                            fill=color, outline=black)
+
+    return _to_array(img)
+
+
+def draw_zenith_angle_labels(rgb: np.ndarray, cx: int, cy: int,
+                              R: int, color=(255, 255, 255)) -> np.ndarray:
+    """Draw 30°/60°/90° zenith-angle labels on first/last frames.
+
+    Replicates ReadNcOrig.m lines 281-301.  Labels are placed at angular
+    position ~0° (East direction) at radii R/3, 2R/3, R, slightly inside each
+    ring (factor 0.85 for radial offset; the text appears just inside the ring).
+    In PIL coords the 0° direction (East) is the right side of the image, so
+    we offset by +cos(angle)*radius from the centre.  A small upward nudge (-8)
+    puts the text just above the ring intersection.
+    """
+    img = _to_pil(rgb)
+    d = ImageDraw.Draw(img)
+    font = _load_font(13)
+
+    # MATLAB: text at (R + r*cosd(0°), R - r*sind(0°)) with Ydir Normal.
+    # In PIL cy+... because y increases downward but the MATLAB formula
+    # subtracts (upward in Ydir Normal).  With angle=0°, sin=0 so vertical
+    # offset is 0; we just nudge upward a tiny bit for readability.
+    offsets = [
+        (R // 3, "30°"),
+        (2 * R // 3, "60°"),
+        (R, "90°"),
+    ]
+    for r, label in offsets:
+        # Place slightly inside the ring (0.85 factor) toward the East side
+        lx = int(cx + r * 0.85)
+        ly = int(cy - r * 0.7) - 4  # nudge up to sit above the ring
+        _draw_text_with_outline(d, lx, ly, label, font=font, fill=color)
+
+    return _to_array(img)
+
 
 def compose_movie_frame(*, image: np.ndarray, vmin: float, vmax: float,
                         x0: int, y0: int, R: int,
-                        date_str: str, time_str: str, site_label: str,
+                        date_str: str, time_str: str,
+                        site_label: str,
+                        site_name: str = "",
+                        band: str = "",
                         markers: list[dict],
                         colormap_name: str, colormap_crop: tuple[int, int],
                         is_first_or_last: bool) -> np.ndarray:
-    """Compose one movie frame from a single 2D `image` (H,W) → uint8 RGB."""
+    """Compose one movie frame from a single 2D `image` (H,W) → uint8 RGB.
+
+    Replicates the MATLAB ReadNcOrig.m overlay layout (lines 240-373):
+    - Zenith ring(s) and crosshair at image centre
+    - Corner compass rose with N/S/W/E labels (lower-left)
+    - Bottom-left: site name + band + "Airglow" and coordinate label
+    - Bottom-right: date and time
+    - Top-right: pixel-size badge
+    - First/last frame only: 30°/60°/90° zenith-angle ring labels
+    - Marker labels (GEMINIS / SOAR / CTIO etc.)
+    """
+    H, W = image.shape[:2]
     rgb = apply_colormap(image, vmin, vmax, colormap_name, colormap_crop)
+
+    # --- Zenith ring(s) and central crosshair ---
     rgb = draw_zenith_ring(rgb, x0, y0, R, color=(0, 0, 0), width=1)
     if is_first_or_last:
         rgb = draw_zenith_ring(rgb, x0, y0, R // 3, color=(0, 0, 0), width=1)
         rgb = draw_zenith_ring(rgb, x0, y0, 2 * R // 3, color=(0, 0, 0), width=1)
     rgb = draw_crosshair(rgb, x0, y0, half_len=max(R // 25, 4))
-    # Compass labels around the lower-left direction crosshair (matches the MATLAB
-    # convention at ReadNcOrig.m:330-333: N at top, S at bottom, W left, E right).
-    rgb = draw_text_corner(rgb, ["N"], "tl")
-    rgb = draw_text_corner(rgb, [site_label, date_str + " " + time_str], "bl")
+
+    # --- Zenith-angle labels (first/last frame only) ---
+    if is_first_or_last:
+        rgb = draw_zenith_angle_labels(rgb, x0, y0, R, color=(255, 255, 255))
+
+    # --- Corner compass rose (lower-left, all frames) ---
+    rgb = draw_compass_rose(rgb, cx=40, cy=H - 40)
+
+    # --- Bottom-left: site/band/location (two lines) ---
+    # Build the two label lines
+    if site_name and band:
+        airglow_line = f"{site_name} {band} Airglow"
+        coord_line = site_label
+    else:
+        # Fallback for callers that only pass site_label (legacy/test)
+        airglow_line = site_label
+        coord_line = ""
+    bl_lines = [airglow_line] if not coord_line else [airglow_line, coord_line]
+    rgb = draw_text_corner(rgb, bl_lines, "bl", font_size=13)
+
+    # --- Bottom-right: date and time (two lines) ---
+    rgb = draw_text_corner(rgb, [date_str, time_str], "br", font_size=13)
+
+    # --- Top-right: pixel-size badge ---
+    rgb = draw_text_corner(rgb, [f"{H}x{W}"], "tr", font_size=13)
+
+    # --- Marker labels ---
     for m in markers:
         rgb = draw_marker(rgb, x0, y0, R, m["az_deg"], m["r_frac"], m["name"])
+
     return rgb

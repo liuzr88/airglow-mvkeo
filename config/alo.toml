@@ -79,8 +79,8 @@ format = "jpg"
 dpi = 200
 colormap = "gray"
 colormap_crop = [10, 128]
-distance_ticks_km = [-800, -500, -200, -100, -50, 0, 50, 100, 200, 500, 800]
-distance_tick_labels = ["-800", "-500", "-200", "-100", "-50", "0", "+50", "+100", "+200", "+500", "800"]
+distance_ticks_km = [-500, -200, -100, -50, 0, 50, 100, 200, 500]
+distance_tick_labels = ["-500", "-200", "-100", "-50", "0", "+50", "+100", "+200", "+500"]
 gap_threshold_factor = 2.05
 
 [difference]

@@ -60,11 +60,12 @@ def read_night(path: str | Path) -> NightData:
     p = Path(path)
     band, d = parse_filename(p)
     with xr.open_dataset(p) as ds:
-        # Axis order from AirglowFITS2NC.m is (time, y, x) after xarray reads
-        # the MATLAB column-major (x, y, time) layout.  Transpose to (y, x, time)
-        # so the rest of the pipeline sees shape (Y, X, N).
+        # MATLAB's AirglowFITS2NC.m declared dims {'x','y'} but assigned them
+        # in column-major order, so the dim *named* 'x' is actually the image
+        # y-axis (rows) and 'y' is the image x-axis (columns).  Transpose with
+        # the MATLAB names swapped so the result is (Y_pixel, X_pixel, N).
         intensity = np.asarray(
-            ds["intensity"].transpose("y", "x", "time").values, dtype=np.float32
+            ds["intensity"].transpose("x", "y", "time").values, dtype=np.float32
         )
         # Time values are days-from-Jan-1 of the observation year (not raw
         # MATLAB datenums).  Read the year scalar; fall back to the filename.
