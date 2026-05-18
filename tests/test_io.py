@@ -47,6 +47,16 @@ def test_output_paths_layout(tmp_path):
     assert p.movie_diff.name == "OH20180101_TD.mp4"
     assert p.json.name == "OH20180101.json"
 
+def test_output_paths_can_split_keogram_root(tmp_path):
+    mv = tmp_path / "MV"
+    kg = tmp_path / "KG"
+    p = output_paths(mv, band="OH", d=date(2018, 1, 1),
+                     style="modern", keogram_out_dir=kg)
+    assert p.keogram == kg / "2018" / "OHKeog20180101.jpg"
+    assert p.movie_raw == mv / "2018" / "OH20180101.mp4"
+    assert p.movie_diff == mv / "2018" / "OH20180101_TD.mp4"
+    assert p.report == mv / "2018" / "OH20180101_report.html"
+
 def test_write_json_sidecar(tmp_path):
     p = tmp_path / "x.json"
     write_json_sidecar(p, {

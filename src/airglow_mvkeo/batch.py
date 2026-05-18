@@ -12,9 +12,10 @@ from .processing import process_night
 log = logging.getLogger(__name__)
 
 def _worker(args):
-    nc_path, out_dir, cfg, overwrite, only, dry_run, style, resume_artifacts, clean_overlay = args
+    (nc_path, out_dir, cfg, overwrite, only, dry_run, style, resume_artifacts,
+     clean_overlay, keogram_out_dir) = args
     try:
-        return process_night(nc_path, out_dir, cfg,
+        return process_night(nc_path, out_dir, cfg, keogram_out_dir=keogram_out_dir,
                              overwrite=overwrite, only=only, dry_run=dry_run,
                              style=style, resume_artifacts=resume_artifacts,
                              clean_overlay=clean_overlay)
@@ -39,7 +40,8 @@ def run_year(year_dir: str | Path, out_dir: str | Path, cfg: Config, *,
              overwrite: bool = False, only: Iterable[str] | None = None,
              dry_run: bool = False, style: str = "matlab",
              resume_artifacts: bool = True,
-             clean_overlay: bool = False) -> list[dict]:
+             clean_overlay: bool = False,
+             keogram_out_dir: str | Path | None = None) -> list[dict]:
     files = discover_files(year_dir, band)
     if not files:
         log.warning("no files found in %s", year_dir)
@@ -47,7 +49,7 @@ def run_year(year_dir: str | Path, out_dir: str | Path, cfg: Config, *,
     workers = workers or max(1, (os.cpu_count() or 2) - 1)
     only_set = set(only) if only else None
     args_list = [(f, Path(out_dir), cfg, overwrite, only_set, dry_run,
-                  style, resume_artifacts, clean_overlay)
+                  style, resume_artifacts, clean_overlay, keogram_out_dir)
                  for f in files]
     log.info("processing %d files with %d workers", len(files), workers)
     ctx = mp.get_context("spawn")

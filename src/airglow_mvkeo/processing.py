@@ -26,6 +26,7 @@ from . import __version__
 log = logging.getLogger(__name__)
 
 def process_night(nc_path: str | Path, out_dir: str | Path, cfg: Config, *,
+                  keogram_out_dir: str | Path | None = None,
                   overwrite: bool = False, only: set[str] | None = None,
                   dry_run: bool = False, style: str = "matlab",
                   resume_artifacts: bool = True,
@@ -34,10 +35,10 @@ def process_night(nc_path: str | Path, out_dir: str | Path, cfg: Config, *,
     `only` ⊆ {"keogram","raw","diff"}; default = all three."""
     if style not in {"matlab", "modern"}:
         raise ValueError("style must be 'matlab' or 'modern'")
-    only = only or ({"keogram", "raw", "diff"} if style == "matlab"
-                    else {"keogram", "raw", "diff", "contact", "report"})
+    only = only or {"keogram", "raw", "diff"}
     night = read_night(nc_path)
-    paths = output_paths(out_dir, night.band, night.date, style=style)
+    paths = output_paths(out_dir, night.band, night.date, style=style,
+                         keogram_out_dir=keogram_out_dir)
     paths.dir.mkdir(parents=True, exist_ok=True)
     modern = style == "modern"
 

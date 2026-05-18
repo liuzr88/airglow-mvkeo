@@ -49,6 +49,12 @@ def _default_out(cfg, style: str) -> Path:
     root = Path(cfg.paths.data_root)
     return root / cfg.paths.mv_root
 
+def _default_keogram_out(cfg, explicit_out: Path | None) -> Path | None:
+    if explicit_out is not None:
+        return None
+    root = Path(cfg.paths.data_root)
+    return root / cfg.paths.kg_root
+
 def _date_file(cfg, sdate: str, band: str) -> Path:
     if len(sdate) != 8 or not sdate.isdigit():
         raise ValueError("date must be YYYYMMDD")
@@ -79,10 +85,11 @@ def main(argv: list[str] | None = None) -> int:
     only = _only_set(args.only)
     style = _style(args.style)
     out = args.out or _default_out(cfg, style)
+    keogram_out = _default_keogram_out(cfg, args.out)
     resume_artifacts = not args.no_resume_artifacts
 
     if args.cmd == "run-night":
-        result = process_night(args.file, out, cfg,
+        result = process_night(args.file, out, cfg, keogram_out_dir=keogram_out,
                                overwrite=args.overwrite, only=only, dry_run=args.dry_run,
                                style=style, resume_artifacts=resume_artifacts,
                                clean_overlay=args.clean_overlay)
@@ -97,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
             if not fn.exists():
                 results.append({"status": "io_error", "source": str(fn), "error": "file not found"})
                 continue
-            results.append(process_night(fn, out, cfg,
+            results.append(process_night(fn, out, cfg, keogram_out_dir=keogram_out,
                                          overwrite=args.overwrite, only=only,
                                          dry_run=args.dry_run, style=style,
                                          resume_artifacts=resume_artifacts,
@@ -109,7 +116,8 @@ def main(argv: list[str] | None = None) -> int:
                        band=args.band, workers=args.workers,
                        overwrite=args.overwrite, only=only, dry_run=args.dry_run,
                        style=style, resume_artifacts=resume_artifacts,
-                       clean_overlay=args.clean_overlay)
+                       clean_overlay=args.clean_overlay,
+                       keogram_out_dir=keogram_out)
     summary = {"total": len(results),
                "ok": sum(1 for r in results if r.get("status") == "ok"),
                "skipped": sum(1 for r in results if r.get("status") == "skipped_existing"),

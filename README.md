@@ -43,23 +43,27 @@ uv run airglow-mvkeo run-year /path/2018 --out ./out --workers 7
 
 ## Output layout
 ```
-<OUT_DIR>/<YYYY>/
+<DATA_ROOT>/KG/<YYYY>/
   {OH|O5}Keog<YYYYMMDD>.jpg
+
+<DATA_ROOT>/MV/<YYYY>/
   {OH|O5}<YYYYMMDD>.mp4
   {OH|O5}<YYYYMMDD>_TD.mp4
   {OH|O5}<YYYYMMDD>.json
 ```
 
-Modern/web style writes suffixed web products:
+Modern/web style uses the same publishing names:
 ```
-<OUT_DIR>/<YYYY>/
-  {OH|O5}Keog<YYYYMMDD>_web.jpg
-  {OH|O5}<YYYYMMDD>_web.mp4
-  {OH|O5}<YYYYMMDD>_TD_web.mp4
-  {OH|O5}<YYYYMMDD>_web_contact.jpg
-  {OH|O5}<YYYYMMDD>_web_report.html
-  {OH|O5}<YYYYMMDD>_web.json
+<DATA_ROOT>/KG/<YYYY>/
+  {OH|O5}Keog<YYYYMMDD>.jpg
+
+<DATA_ROOT>/MV/<YYYY>/
+  {OH|O5}<YYYYMMDD>.mp4
+  {OH|O5}<YYYYMMDD>_TD.mp4
+  {OH|O5}<YYYYMMDD>.json
 ```
+
+The optional `--only contact` and `--only report` products create a contact sheet and an HTML review page in `MV/<YYYY>/`. They are QA/convenience files and are not required for normal publishing.
 
 ## MATLAB Compatibility
 Movie names match `CreateMovNC.m`: raw movies are named like `OH20231122.mp4`, and previous-frame difference movies are named like `OH20231122_TD.mp4`.
@@ -76,7 +80,7 @@ The previous-frame TD movie is the preferred web movie for wave structure. `--on
 ```bash
 uv run airglow-mvkeo run-date 20231010 --band OH --style modern --out /tmp/smoke --verbose
 ```
-Open the resulting report in a viewer. On macOS: `open /tmp/smoke/2023/OH20231010_web_report.html`. On Linux: `xdg-open ...`.
+Open the resulting files in a viewer. The optional report is named like `/tmp/smoke/2023/OH20231010_report.html`.
 
 ## Tests
 ```bash

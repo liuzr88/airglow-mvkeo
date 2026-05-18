@@ -82,19 +82,20 @@ def read_night(path: str | Path) -> NightData:
     return NightData(intensity=intensity, times=times, band=band, date=d, source_path=p)
 
 def output_paths(out_dir: str | Path, band: str, d: date, *,
-                 style: str = "matlab") -> OutputPaths:
+                 style: str = "matlab",
+                 keogram_out_dir: str | Path | None = None) -> OutputPaths:
     out = Path(out_dir) / f"{d.year:04d}"
+    keo_out = Path(keogram_out_dir) / f"{d.year:04d}" if keogram_out_dir else out
     s = d.strftime("%Y%m%d")
-    suffix = "" if style == "matlab" else "_web"
     return OutputPaths(
         dir=out,
-        keogram=out / f"{band}Keog{s}{suffix}.jpg",
-        movie_raw=out / f"{band}{s}{suffix}.mp4",
-        movie_diff=out / f"{band}{s}_TD{suffix}.mp4",
-        movie_wave=out / f"{band}{s}_wave{suffix}.mp4",
-        contact_sheet=out / f"{band}{s}{suffix}_contact.jpg",
-        report=out / f"{band}{s}{suffix}_report.html",
-        json=out / f"{band}{s}{suffix}.json",
+        keogram=keo_out / f"{band}Keog{s}.jpg",
+        movie_raw=out / f"{band}{s}.mp4",
+        movie_diff=out / f"{band}{s}_TD.mp4",
+        movie_wave=out / f"{band}{s}_wave.mp4",
+        contact_sheet=out / f"{band}{s}_contact.jpg",
+        report=out / f"{band}{s}_report.html",
+        json=out / f"{band}{s}.json",
     )
 
 def write_json_sidecar(path: str | Path, payload: dict[str, Any]) -> None:

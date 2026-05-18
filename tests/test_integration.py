@@ -49,30 +49,31 @@ def test_process_night_synthetic_end_to_end(tmp_path):
                                   distance_ticks_km=small_ticks_km,
                                   distance_tick_labels=small_tick_labels))
 
-    out_dir = tmp_path / "out"
-    result = process_night(nc, out_dir, cfg)
+    out_dir = tmp_path / "MV"
+    kg_dir = tmp_path / "KG"
+    result = process_night(nc, out_dir, cfg, keogram_out_dir=kg_dir)
 
     assert result["status"] == "ok"
     assert result["n_frames_used"] == 30
     assert result["calibration"]["x0"] == 32
 
-    # All three output files exist at the expected paths
-    p = out_dir / "2018" / "01"
-    assert (p / "OHKeog20180101.jpg").exists()
-    assert (p / "OHOrig20180101.mp4").exists()
-    assert (p / "OHDiff20180101.mp4").exists()
+    # Keogram and movies can be written to separate configured roots.
+    p = out_dir / "2018"
+    assert (kg_dir / "2018" / "OHKeog20180101.jpg").exists()
+    assert (p / "OH20180101.mp4").exists()
+    assert (p / "OH20180101_TD.mp4").exists()
 
     sidecar = json.loads((p / "OH20180101.json").read_text())
     assert sidecar["band"] == "OH"
     assert sidecar["status"] == "ok"
     assert sidecar["files"]["keogram"] == "OHKeog20180101.jpg"
-    assert sidecar["files"]["movie_raw"] == "OHOrig20180101.mp4"
-    assert sidecar["files"]["movie_diff"] == "OHDiff20180101.mp4"
+    assert sidecar["files"]["movie_raw"] == "OH20180101.mp4"
+    assert sidecar["files"]["movie_diff"] == "OH20180101_TD.mp4"
 
     # Verify mp4 duration: 30 frames @ 30 fps ~= 1 sec
     r = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format=duration",
                         "-of", "default=noprint_wrappers=1:nokey=1",
-                        str(p / "OHOrig20180101.mp4")],
+                        str(p / "OH20180101.mp4")],
                        capture_output=True, text=True, check=True)
     duration = float(r.stdout.strip())
     assert 0.8 < duration < 2.0, f"raw movie duration {duration} outside expected range"
@@ -113,5 +114,5 @@ def test_dry_run_does_not_write_files(tmp_path):
     assert result["status"] == "dry_run"
     assert "files_planned" in result
     # Nothing should have been written
-    assert not (out_dir / "2018" / "01" / "O5Keog20180101.jpg").exists()
-    assert not (out_dir / "2018" / "01" / "O520180101.json").exists()
+    assert not (out_dir / "2018" / "O5Keog20180101.jpg").exists()
+    assert not (out_dir / "2018" / "O520180101.json").exists()
