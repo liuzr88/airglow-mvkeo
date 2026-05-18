@@ -62,6 +62,43 @@ def symmetric_limits(data: np.ndarray, percentile: float = 99.0) -> tuple[float,
     return -lim, lim
 
 
+def sigma_clipped_symmetric_limits(
+    data: np.ndarray,
+    sigma: float = 2.0,
+    clip_sigma: float = 3.0,
+    max_iter: int = 8,
+) -> tuple[float, float]:
+    """Return symmetric display limits from the majority Gaussian-like signal.
+
+    Bright stars, moonlit edges, and hot pixels occupy the tails of the TD
+    distribution. Iterative clipping estimates the standard deviation of the
+    central population, then uses ``sigma * std`` as the display range.
+    """
+    finite = np.asarray(data, dtype=np.float32)
+    work = finite[np.isfinite(finite)]
+    if work.size == 0:
+        return -1.0, 1.0
+
+    sigma = max(float(sigma), 0.1)
+    clip_sigma = max(float(clip_sigma), sigma, 0.1)
+    for _ in range(max_iter):
+        med = float(np.median(work))
+        sd = float(np.std(work))
+        if not np.isfinite(sd) or sd <= 0:
+            break
+        keep = np.abs(work - med) <= clip_sigma * sd
+        if keep.all() or keep.sum() < max(32, int(0.05 * work.size)):
+            break
+        work = work[keep]
+
+    med = float(np.median(work))
+    sd = float(np.std(work))
+    lim = abs(med) + sigma * sd
+    if not np.isfinite(lim) or lim <= 0:
+        lim = 1.0
+    return -float(lim), float(lim)
+
+
 def signed_brightness_curve(data: np.ndarray, limit: float, strength: float) -> np.ndarray:
     """Curve signed perturbations to lift subtle waves without clipping peaks.
 

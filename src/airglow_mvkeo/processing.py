@@ -15,7 +15,7 @@ from .intensity import (
 from .difference import previous_frame_difference
 from .enhancement import (
     relative_perturbation, robust_limits, symmetric_limits,
-    signed_brightness_curve, spatial_median3,
+    sigma_clipped_symmetric_limits, signed_brightness_curve, spatial_median3,
 )
 from .keogram import extract_slices, wrap_time_hours, render_keogram
 from .movie import write_h264_video
@@ -188,7 +188,10 @@ def process_night(nc_path: str | Path, out_dir: str | Path, cfg: Config, *,
         diff = previous_frame_difference(frames)
         diff_times = times[1:]
         if _should_write("movie_diff", paths.movie_diff):
-            d_global = symmetric_limits(diff, 99.0) if modern else None
+            d_global = (
+                sigma_clipped_symmetric_limits(diff, sigma=cfg.difference.clip_sigma)
+                if modern else None
+            )
             def _diff_iter():
                 n = diff.shape[2]
                 for i in range(n):
@@ -251,7 +254,9 @@ def process_night(nc_path: str | Path, out_dir: str | Path, cfg: Config, *,
         if _should_write("contact_sheet", paths.contact_sheet):
             contact_diff = previous_frame_difference(frames)
             contact_times = times[1:]
-            d_vmin, d_vmax = symmetric_limits(contact_diff, 99.0)
+            d_vmin, d_vmax = sigma_clipped_symmetric_limits(
+                contact_diff, sigma=cfg.difference.clip_sigma
+            )
             n = contact_diff.shape[2]
             count = min(cfg.movie.contact_sheet_frames, n)
             idxs = np.linspace(0, n - 1, count, dtype=int)

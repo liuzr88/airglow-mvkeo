@@ -1,5 +1,6 @@
 import numpy as np
 from airglow_mvkeo.difference import previous_frame_difference, running_mean_subtract
+from airglow_mvkeo.enhancement import sigma_clipped_symmetric_limits
 
 def test_previous_frame_difference_skips_first_frame():
     frames = np.empty((2, 2, 4), dtype=np.float32)
@@ -29,3 +30,11 @@ def test_running_mean_matches_centered_average():
     times = np.arange(5) * 60.0
     diff = running_mean_subtract(frames, times, window_minutes=3)
     assert abs(diff[0, 0, 2]) < 1e-6
+
+def test_sigma_clipped_limits_ignore_bright_tails():
+    rng = np.random.default_rng(0)
+    core = rng.normal(0.0, 10.0, size=10_000).astype(np.float32)
+    stars = np.array([-1000.0, -850.0, 900.0, 1200.0], dtype=np.float32)
+    vmin, vmax = sigma_clipped_symmetric_limits(np.concatenate([core, stars]), sigma=2.0)
+    assert -30.0 < vmin < -15.0
+    assert 15.0 < vmax < 30.0
