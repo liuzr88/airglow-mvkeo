@@ -1,8 +1,14 @@
+[paths]
+data_root = "/Users/alanliu/OneDriveResearch/Data/ALOASI"
+nc_root = "NC"
+mv_root = "MV"
+kg_root = "KG"
+
 [site]
 name = "ALO"
 lat_deg = -30.251807
 lon_deg = -70.738199
-label = "(30.24°S, 70.74°W)"
+label = "30.24S, 70.74W"
 ut_offset_hours = -5
 
 [bands.OH]
@@ -69,23 +75,46 @@ r_frac = 0.91
 fps_normal = 30
 fps_low_cadence = 15
 crf = 18
+web_crf = 24
 codec = "libx264"
 pix_fmt = "yuv420p"
 colormap = "bone"
 colormap_crop = [4, 124]
+output_size_px = 540
+web_output_size_px = 540
+contact_sheet_frames = 12
 
 [keogram]
 format = "jpg"
 dpi = 200
+modern_dpi = 220
 colormap = "gray"
+modern_colormap = "gray"
+wave_colormap = "gray"
 colormap_crop = [10, 128]
 distance_ticks_km = [-500, -200, -100, -50, 0, 50, 100, 200, 500]
 distance_tick_labels = ["-500", "-200", "-100", "-50", "0", "+50", "+100", "+200", "+500"]
-gap_threshold_factor = 2.05
+gap_threshold_factor = 0
+smooth_time_bins = 3
+show_colorbar = true
+contour = false
+contour_levels = 80
+interpolation = "nearest"
+full_night_hours = 10
+full_night_width_px = 1136
+min_width_px = 480
 
 [difference]
 window_minutes = 60
 clip_sigma = 2.0
+
+[wave]
+window_minutes = 60
+movie_percentile = 99
+keogram_percentile = 97
+gain = 1.35
+spatial_median = false
+brightness_curve = 2.5
 
 [filter]
 overexposed_mean_threshold = 1e4

@@ -1,5 +1,13 @@
 import numpy as np
-from airglow_mvkeo.difference import running_mean_subtract
+from airglow_mvkeo.difference import previous_frame_difference, running_mean_subtract
+
+def test_previous_frame_difference_skips_first_frame():
+    frames = np.empty((2, 2, 4), dtype=np.float32)
+    for i in range(4):
+        frames[..., i] = i * 10.0
+    diff = previous_frame_difference(frames)
+    assert diff.shape == (2, 2, 3)
+    assert np.allclose(diff, 10.0)
 
 def test_running_mean_subtract_constant_is_zero():
     frames = np.full((4, 4, 20), 1000.0, dtype=np.float32)

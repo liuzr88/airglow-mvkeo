@@ -40,6 +40,9 @@ class OutputPaths:
     keogram: Path
     movie_raw: Path
     movie_diff: Path
+    movie_wave: Path
+    contact_sheet: Path
+    report: Path
     json: Path
 
 def parse_filename(p: Path) -> tuple[str, date]:
@@ -61,9 +64,9 @@ def read_night(path: str | Path) -> NightData:
     band, d = parse_filename(p)
     with xr.open_dataset(p) as ds:
         # MATLAB's AirglowFITS2NC.m declared dims {'x','y'} but assigned them
-        # in column-major order, so the dim *named* 'x' is actually the image
-        # y-axis (rows) and 'y' is the image x-axis (columns).  Transpose with
-        # the MATLAB names swapped so the result is (Y_pixel, X_pixel, N).
+        # in column-major order, so the dim named 'x' is the displayed vertical
+        # image axis and 'y' is the displayed horizontal image axis. The result
+        # is an image cube indexed as (row, column, time).
         intensity = np.asarray(
             ds["intensity"].transpose("x", "y", "time").values, dtype=np.float32
         )
@@ -78,15 +81,20 @@ def read_night(path: str | Path) -> NightData:
         )
     return NightData(intensity=intensity, times=times, band=band, date=d, source_path=p)
 
-def output_paths(out_dir: str | Path, band: str, d: date) -> OutputPaths:
-    out = Path(out_dir) / f"{d.year:04d}" / f"{d.month:02d}"
+def output_paths(out_dir: str | Path, band: str, d: date, *,
+                 style: str = "matlab") -> OutputPaths:
+    out = Path(out_dir) / f"{d.year:04d}"
     s = d.strftime("%Y%m%d")
+    suffix = "" if style == "matlab" else "_web"
     return OutputPaths(
         dir=out,
-        keogram=out / f"{band}Keog{s}.jpg",
-        movie_raw=out / f"{band}Orig{s}.mp4",
-        movie_diff=out / f"{band}Diff{s}.mp4",
-        json=out / f"{band}{s}.json",
+        keogram=out / f"{band}Keog{s}{suffix}.jpg",
+        movie_raw=out / f"{band}{s}{suffix}.mp4",
+        movie_diff=out / f"{band}{s}_TD{suffix}.mp4",
+        movie_wave=out / f"{band}{s}_wave{suffix}.mp4",
+        contact_sheet=out / f"{band}{s}{suffix}_contact.jpg",
+        report=out / f"{band}{s}{suffix}_report.html",
+        json=out / f"{band}{s}{suffix}.json",
     )
 
 def write_json_sidecar(path: str | Path, payload: dict[str, Any]) -> None:

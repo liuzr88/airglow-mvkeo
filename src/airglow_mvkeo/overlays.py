@@ -29,7 +29,12 @@ def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     try:
         return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
     except OSError:
-        return ImageFont.load_default()
+        try:
+            from matplotlib import font_manager
+            path = font_manager.findfont("DejaVu Sans", fallback_to_default=True)
+            return ImageFont.truetype(path, size)
+        except OSError:
+            return ImageFont.load_default()
 
 
 def _draw_text_with_outline(d: ImageDraw.ImageDraw, x: int, y: int, text: str,
@@ -191,55 +196,69 @@ def compose_movie_frame(*, image: np.ndarray, vmin: float, vmax: float,
                         band: str = "",
                         markers: list[dict],
                         colormap_name: str, colormap_crop: tuple[int, int],
-                        is_first_or_last: bool) -> np.ndarray:
+                        is_first_or_last: bool,
+                        draw_geometry: bool = False,
+                        output_size: int | None = None,
+                        clean_overlay: bool = False,
+                        label_font_size: int = 13) -> np.ndarray:
     """Compose one movie frame from a single 2D `image` (H,W) → uint8 RGB.
 
-    Replicates the MATLAB ReadNcOrig.m overlay layout (lines 240-373):
-    - Zenith ring(s) and crosshair at image centre
+    Replicates the active MATLAB CreateMovNC.m overlay layout:
     - Corner compass rose with N/S/W/E labels (lower-left)
-    - Bottom-left: site name + band + "Airglow" and coordinate label
-    - Bottom-right: date and time
-    - Top-right: pixel-size badge
-    - First/last frame only: 30°/60°/90° zenith-angle ring labels
-    - Marker labels (GEMINIS / SOAR / CTIO etc.)
+    - Top-left: site/band and coordinate label
+    - Top-right: date and UT time
+    - Bottom-right: pixel-size badge
+
+    The original source has zenith rings, crosshairs, and site markers present
+    but commented out.  ``draw_geometry=True`` keeps that richer overlay
+    available without changing the MATLAB-compatible default.
     """
     H, W = image.shape[:2]
-    rgb = apply_colormap(image, vmin, vmax, colormap_name, colormap_crop)
+    # MATLAB renders image row 1 at the bottom via ``Ydir='Normal'``.
+    rgb = apply_colormap(np.flipud(image), vmin, vmax, colormap_name, colormap_crop)
 
     # --- Zenith ring(s) and central crosshair ---
-    rgb = draw_zenith_ring(rgb, x0, y0, R, color=(0, 0, 0), width=1)
-    if is_first_or_last:
-        rgb = draw_zenith_ring(rgb, x0, y0, R // 3, color=(0, 0, 0), width=1)
-        rgb = draw_zenith_ring(rgb, x0, y0, 2 * R // 3, color=(0, 0, 0), width=1)
-    rgb = draw_crosshair(rgb, x0, y0, half_len=max(R // 25, 4))
+    if draw_geometry:
+        cy = H - 1 - y0
+        rgb = draw_zenith_ring(rgb, x0, cy, R, color=(0, 0, 0), width=1)
+        if is_first_or_last:
+            rgb = draw_zenith_ring(rgb, x0, cy, R // 3, color=(0, 0, 0), width=1)
+            rgb = draw_zenith_ring(rgb, x0, cy, 2 * R // 3, color=(0, 0, 0), width=1)
+        rgb = draw_crosshair(rgb, x0, cy, half_len=max(R // 25, 4))
 
-    # --- Zenith-angle labels (first/last frame only) ---
-    if is_first_or_last:
-        rgb = draw_zenith_angle_labels(rgb, x0, y0, R, color=(255, 255, 255))
+        # --- Zenith-angle labels (first/last frame only) ---
+        if is_first_or_last:
+            rgb = draw_zenith_angle_labels(rgb, x0, cy, R, color=(255, 255, 255))
 
     # --- Corner compass rose (lower-left, all frames) ---
     rgb = draw_compass_rose(rgb, cx=40, cy=H - 40)
 
-    # --- Bottom-left: site/band/location (two lines) ---
+    # --- Top-left: site/band/location (two lines) ---
     # Build the two label lines
     if site_name and band:
-        airglow_line = f"{site_name} {band} Airglow"
+        airglow_line = f"{site_name} {band}"
         coord_line = site_label
     else:
         # Fallback for callers that only pass site_label (legacy/test)
         airglow_line = site_label
         coord_line = ""
     bl_lines = [airglow_line] if not coord_line else [airglow_line, coord_line]
-    rgb = draw_text_corner(rgb, bl_lines, "bl", font_size=13)
+    rgb = draw_text_corner(rgb, bl_lines, "tl", font_size=label_font_size)
 
-    # --- Bottom-right: date and time (two lines) ---
-    rgb = draw_text_corner(rgb, [date_str, time_str], "br", font_size=13)
+    # --- Top-right: date and time (two lines) ---
+    rgb = draw_text_corner(rgb, [date_str, time_str], "tr", font_size=label_font_size)
 
-    # --- Top-right: pixel-size badge ---
-    rgb = draw_text_corner(rgb, [f"{H}x{W}"], "tr", font_size=13)
+    if not clean_overlay:
+        # --- Bottom-right: pixel-size badge ---
+        rgb = draw_text_corner(rgb, [f"{H}x{W}"], "br", font_size=label_font_size)
 
-    # --- Marker labels ---
-    for m in markers:
-        rgb = draw_marker(rgb, x0, y0, R, m["az_deg"], m["r_frac"], m["name"])
+    if draw_geometry:
+        # --- Marker labels ---
+        for m in markers:
+            rgb = draw_marker(rgb, x0, cy, R, m["az_deg"], m["r_frac"], m["name"])
+
+    if output_size is not None and output_size != H:
+        resample = Image.Resampling.BILINEAR
+        rgb = _to_array(_to_pil(rgb).resize((output_size, output_size), resample=resample))
 
     return rgb

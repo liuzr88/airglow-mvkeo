@@ -4,8 +4,8 @@ Generate keograms, raw movies, and difference movies from per-night ALO airglow 
 
 ## Requirements
 - Python 3.11+
-- `ffmpeg` and `ffprobe` on PATH
 - `uv` (recommended) or pip
+- Optional: system `ffmpeg` / `ffprobe`. If `ffmpeg` is not on PATH, the package uses `imageio-ffmpeg`.
 
 ## Install
 ```bash
@@ -20,6 +20,12 @@ uv venv && uv pip install -e .
 uv run airglow-mvkeo run-night /path/OH20180101.nc --out ./out
 ```
 
+### One date from the configured ALO data root
+```bash
+uv run airglow-mvkeo run-date 20231010 --band OH --style matlab
+uv run airglow-mvkeo run-date 20231010 --band OH --style modern --clean-overlay
+```
+
 ### A whole year
 ```bash
 uv run airglow-mvkeo run-year /path/2018 --out ./out --workers 7
@@ -27,28 +33,50 @@ uv run airglow-mvkeo run-year /path/2018 --out ./out --workers 7
 
 ### Flags
 - `--band OH|O5|all` (default: all)
-- `--only keogram|raw|diff|all` (default: all) — regenerate just one artifact
+- `--style matlab|modern|web` (default: matlab) — `matlab` preserves validated legacy output; `modern`/`web` adds web-sized movies, reports, and duration-scaled keograms
+- `--only keogram|raw|diff|wave|contact|report|all` (default: all) — regenerate just one artifact
+- `--clean-overlay` — reduce movie overlay clutter for web embeds and presentations
 - `--overwrite` — redo even if JSON sidecar exists
+- `--no-resume-artifacts` — skip whole nights when sidecar exists; by default missing artifacts resume individually
 - `--dry-run` — list planned outputs, render nothing
 - `--config /path/to/other.toml` — non-default site/calibration
 
 ## Output layout
 ```
-<OUT_DIR>/<YYYY>/<MM>/
+<OUT_DIR>/<YYYY>/
   {OH|O5}Keog<YYYYMMDD>.jpg
-  {OH|O5}Orig<YYYYMMDD>.mp4
-  {OH|O5}Diff<YYYYMMDD>.mp4
+  {OH|O5}<YYYYMMDD>.mp4
+  {OH|O5}<YYYYMMDD>_TD.mp4
   {OH|O5}<YYYYMMDD>.json
 ```
 
-## Naming change vs. MATLAB
-MATLAB output uses a `(v2)` suffix (e.g. `OHKeog20180101(v2).jpg`); this pipeline drops it. The website ingestion path must be updated in lockstep.
+Modern/web style writes suffixed web products:
+```
+<OUT_DIR>/<YYYY>/
+  {OH|O5}Keog<YYYYMMDD>_web.jpg
+  {OH|O5}<YYYYMMDD>_web.mp4
+  {OH|O5}<YYYYMMDD>_TD_web.mp4
+  {OH|O5}<YYYYMMDD>_web_contact.jpg
+  {OH|O5}<YYYYMMDD>_web_report.html
+  {OH|O5}<YYYYMMDD>_web.json
+```
+
+## MATLAB Compatibility
+Movie names match `CreateMovNC.m`: raw movies are named like `OH20231122.mp4`, and previous-frame difference movies are named like `OH20231122_TD.mp4`.
+
+## Keograms
+Keograms are simple centerline stacks from the raw image cube. The W-E panel uses the center image row, `frames[y0, :, :]`; the S-N panel uses the center image column, `frames[:, x0, :]`. No wave filtering, temporal smoothing, brightness curve, contouring, or artificial gap columns are applied to the sampled values. The renderer only maps those samples to grayscale display levels and draws the axes/labels.
+
+Keogram widths are scaled by observing duration so horizontal pixels have a consistent time meaning from night to night. In the default ALO config, a full 10-hour night is 1136 px wide; shorter nights are proportionally narrower, with a minimum width for readability.
+
+## Wave Enhancement
+The previous-frame TD movie is the preferred web movie for wave structure. `--only wave` remains available in modern/web style as an experimental movie product, but the default keogram is intentionally raw-centerline rather than wave-enhanced.
 
 ## Smoke test
 ```bash
-uv run airglow-mvkeo run-night /path/to/OH20180101.nc --out /tmp/smoke --verbose
+uv run airglow-mvkeo run-date 20231010 --band OH --style modern --out /tmp/smoke --verbose
 ```
-Open the resulting JPG and MP4s in a viewer to verify visual quality. On macOS: `open /tmp/smoke/2018/01/OHKeog20180101.jpg`. On Linux: `xdg-open ...`.
+Open the resulting report in a viewer. On macOS: `open /tmp/smoke/2023/OH20231010_web_report.html`. On Linux: `xdg-open ...`.
 
 ## Tests
 ```bash
@@ -61,10 +89,12 @@ uv run pytest -m visual       # opt-in visual regression (requires fixtures)
 - `io.py` — NetCDF read (with MATLAB datenum decoding), JSON sidecar write
 - `geometry.py` — pixel ↔ km mapping at airglow altitude, calibration lookup
 - `intensity.py` — over-exposure filter, percentile color range, fps selection
-- `difference.py` — running-mean detrending for wave enhancement
+- `enhancement.py` — modern wave-enhancement and artifact cleanup helpers
+- `difference.py` — previous-frame differencing for MATLAB-compatible TD movies
 - `overlays.py` — PIL primitives (zenith ring, crosshair, labels, markers)
 - `movie.py` — ffmpeg-piped H.264 writer (deadlock-safe, `yuv420p` for browsers)
 - `keogram.py` — slice extraction, gap insertion, 2-panel matplotlib render
+- `report.py` — contact sheet and HTML report output
 - `processing.py` — per-night driver gluing read → filter → render → JSON
 - `batch.py` — multiprocessing year orchestrator
 - `cli.py` — argparse entrypoint

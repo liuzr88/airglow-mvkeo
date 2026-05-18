@@ -13,13 +13,21 @@ class FFmpegError(RuntimeError):
 
 def _find_ffmpeg() -> str:
     p = shutil.which("ffmpeg")
-    if not p:
-        raise FFmpegError("ffmpeg not found on PATH. Install: `brew install ffmpeg`.")
+    if p:
+        return p
+    try:
+        import imageio_ffmpeg
+    except ImportError as exc:
+        raise FFmpegError(
+            "ffmpeg not found on PATH. Install: `brew install ffmpeg`, "
+            "or `pip install imageio-ffmpeg`."
+        ) from exc
+    p = imageio_ffmpeg.get_ffmpeg_exe()
     return p
 
 def write_h264_video(frames: Iterable[np.ndarray], out_path: str | Path, *,
                      fps: int, crf: int, pix_fmt: str = "yuv420p",
-                     codec: str = "libx264") -> None:
+                     codec: str = "libx264", web: bool = True) -> None:
     """Stream RGB uint8 frames to ffmpeg, encoding H.264 mp4. Drains stderr on a
     background thread to avoid pipe deadlock."""
     out = Path(out_path)
@@ -40,9 +48,13 @@ def write_h264_video(frames: Iterable[np.ndarray], out_path: str | Path, *,
         "-s", f"{w}x{h}", "-r", str(fps),
         "-i", "-",
         "-c:v", codec, "-crf", str(crf), "-pix_fmt", pix_fmt,
+    ]
+    if web and codec == "libx264":
+        cmd.extend(["-preset", "medium", "-profile:v", "high", "-level", "4.0"])
+    cmd.extend([
         "-movflags", "+faststart",
         str(out),
-    ]
+    ])
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                             stderr=subprocess.PIPE, bufsize=0)
 

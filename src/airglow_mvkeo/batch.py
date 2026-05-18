@@ -12,10 +12,12 @@ from .processing import process_night
 log = logging.getLogger(__name__)
 
 def _worker(args):
-    nc_path, out_dir, cfg, overwrite, only, dry_run = args
+    nc_path, out_dir, cfg, overwrite, only, dry_run, style, resume_artifacts, clean_overlay = args
     try:
         return process_night(nc_path, out_dir, cfg,
-                             overwrite=overwrite, only=only, dry_run=dry_run)
+                             overwrite=overwrite, only=only, dry_run=dry_run,
+                             style=style, resume_artifacts=resume_artifacts,
+                             clean_overlay=clean_overlay)
     except Exception as e:  # noqa: BLE001
         return {
             "status": "io_error",
@@ -35,14 +37,18 @@ def discover_files(year_dir: str | Path, band: str | None = None) -> list[Path]:
 def run_year(year_dir: str | Path, out_dir: str | Path, cfg: Config, *,
              band: str | None = None, workers: int | None = None,
              overwrite: bool = False, only: Iterable[str] | None = None,
-             dry_run: bool = False) -> list[dict]:
+             dry_run: bool = False, style: str = "matlab",
+             resume_artifacts: bool = True,
+             clean_overlay: bool = False) -> list[dict]:
     files = discover_files(year_dir, band)
     if not files:
         log.warning("no files found in %s", year_dir)
         return []
     workers = workers or max(1, (os.cpu_count() or 2) - 1)
     only_set = set(only) if only else None
-    args_list = [(f, Path(out_dir), cfg, overwrite, only_set, dry_run) for f in files]
+    args_list = [(f, Path(out_dir), cfg, overwrite, only_set, dry_run,
+                  style, resume_artifacts, clean_overlay)
+                 for f in files]
     log.info("processing %d files with %d workers", len(files), workers)
     ctx = mp.get_context("spawn")
     with ctx.Pool(processes=workers) as pool:

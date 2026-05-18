@@ -6,34 +6,46 @@ from datetime import timezone
 from pathlib import Path
 import numpy as np
 from .config import Config
-from .io import NightData, OutputPaths, output_paths, read_night, write_json_sidecar
+from .io import output_paths, read_night, write_json_sidecar
 from .geometry import lookup_calibration
 from .intensity import (
     filter_overexposed, count_low_intensity_frames,
-    color_range_zenith, fps_for_cadence,
+    color_range_zenith, fps_for_cadence, matlab_get_range,
 )
-from .difference import running_mean_subtract
+from .difference import previous_frame_difference
+from .enhancement import (
+    relative_perturbation, robust_limits, symmetric_limits,
+    signed_brightness_curve, spatial_median3,
+)
 from .keogram import extract_slices, wrap_time_hours, render_keogram
 from .movie import write_h264_video
 from .overlays import compose_movie_frame
+from .report import write_contact_sheet, write_html_report
 from . import __version__
 
 log = logging.getLogger(__name__)
 
 def process_night(nc_path: str | Path, out_dir: str | Path, cfg: Config, *,
                   overwrite: bool = False, only: set[str] | None = None,
-                  dry_run: bool = False) -> dict:
+                  dry_run: bool = False, style: str = "matlab",
+                  resume_artifacts: bool = True,
+                  clean_overlay: bool = False) -> dict:
     """Process one night. Always writes a JSON sidecar (even on skip).
     `only` ⊆ {"keogram","raw","diff"}; default = all three."""
-    only = only or {"keogram", "raw", "diff"}
+    if style not in {"matlab", "modern"}:
+        raise ValueError("style must be 'matlab' or 'modern'")
+    only = only or ({"keogram", "raw", "diff"} if style == "matlab"
+                    else {"keogram", "raw", "diff", "contact", "report"})
     night = read_night(nc_path)
-    paths = output_paths(out_dir, night.band, night.date)
+    paths = output_paths(out_dir, night.band, night.date, style=style)
     paths.dir.mkdir(parents=True, exist_ok=True)
+    modern = style == "modern"
 
     base_payload = {
         "date": night.date.isoformat(),
         "band": night.band,
         "site": cfg.site.name,
+        "style": style,
         "generator_version": __version__,
         "n_frames_total": int(night.intensity.shape[2]),
     }
@@ -43,9 +55,12 @@ def process_night(nc_path: str | Path, out_dir: str | Path, cfg: Config, *,
             "keogram": paths.keogram.name,
             "movie_raw": paths.movie_raw.name,
             "movie_diff": paths.movie_diff.name,
+            "movie_wave": paths.movie_wave.name,
+            "contact_sheet": paths.contact_sheet.name,
+            "report": paths.report.name,
         }}
 
-    if paths.json.exists() and not overwrite:
+    if paths.json.exists() and not overwrite and not resume_artifacts:
         log.info("[%s %s] sidecar exists, skipping (use --overwrite to redo)",
                  night.date, night.band)
         return {**base_payload, "status": "skipped_existing"}
@@ -69,11 +84,6 @@ def process_night(nc_path: str | Path, out_dir: str | Path, cfg: Config, *,
     time_seconds = np.array(
         [(t - night.times[keep[0]]).total_seconds() for t in times], dtype=float
     )
-    secs_of_day = np.array(
-        [t.hour * 3600 + t.minute * 60 + t.second + t.microsecond / 1e6 for t in times],
-        dtype=float,
-    )
-
     cal = lookup_calibration(cfg.calibration, night.date)
     band_cfg = cfg.bands[night.band]
 
@@ -82,81 +92,190 @@ def process_night(nc_path: str | Path, out_dir: str | Path, cfg: Config, *,
         low_threshold=cfg.filter.low_intensity_threshold,
         percentiles=cfg.filter.color_range_percentiles,
     )
-    fps = fps_for_cadence(secs_of_day, cfg.movie.fps_normal, cfg.movie.fps_low_cadence,
+    fps = fps_for_cadence(time_seconds, cfg.movie.fps_normal, cfg.movie.fps_low_cadence,
                           threshold_minutes=2.0)
 
     written: dict[str, str] = {}
+    skipped: dict[str, str] = {}
     t_start = _time.time()
+    output_size = cfg.movie.web_output_size_px if modern else cfg.movie.output_size_px
+    crf = cfg.movie.web_crf if modern else cfg.movie.crf
+    wave_cube: np.ndarray | None = None
+
+    def _should_write(kind: str, path: Path) -> bool:
+        if overwrite or not resume_artifacts or not path.exists():
+            return True
+        skipped[kind] = path.name
+        log.info("[%s %s] %s exists, skipping", night.date, night.band, path.name)
+        return False
+
+    def _wave_cube() -> np.ndarray:
+        nonlocal wave_cube
+        if wave_cube is None:
+            wave_cube = relative_perturbation(
+                frames, time_seconds, cfg.wave.window_minutes, scale=100.0 * cfg.wave.gain
+            )
+            if cfg.wave.spatial_median:
+                wave_cube = spatial_median3(wave_cube)
+        return wave_cube
 
     if "keogram" in only:
-        we, sn = extract_slices(frames, x0=cal.x0, y0=cal.y0)
-        hrs = wrap_time_hours(times)
-        render_keogram(
-            we=we, sn=sn, times=hrs,
-            x0=cal.x0, y0=cal.y0, R=cal.R,
-            altitude_km=band_cfg.altitude_km, fov_deg=cfg.image.fov_deg,
-            image_size=cfg.image.size_px,
-            vmin=vmin, vmax=vmax,
-            title=f"Keogram of {night.band} Airglow @{cfg.site.name}",
-            date_label=night.date.isoformat(),
-            out_path=paths.keogram, dpi=cfg.keogram.dpi,
-            colormap=cfg.keogram.colormap,
-            colormap_crop=cfg.keogram.colormap_crop,
-            distance_ticks_km=cfg.keogram.distance_ticks_km,
-            distance_tick_labels=cfg.keogram.distance_tick_labels,
-        )
-        written["keogram"] = paths.keogram.name
+        if _should_write("keogram", paths.keogram):
+            we, sn = extract_slices(frames, x0=cal.x0, y0=cal.y0)
+            hrs = wrap_time_hours(times)
+            kvmin = kvmax = None
+            cmap = cfg.keogram.colormap
+            crop = cfg.keogram.colormap_crop
+            value_label = "Intensity"
+            render_keogram(
+                we=we, sn=sn, times=hrs,
+                x0=cal.x0, y0=cal.y0, R=cal.R,
+                altitude_km=band_cfg.altitude_km, fov_deg=cfg.image.fov_deg,
+                image_size=cfg.image.size_px,
+                vmin=kvmin, vmax=kvmax,
+                title=f"Keogram of {night.band} Airglow @{cfg.site.name}",
+                date_label=times[-1].date().isoformat(),
+                out_path=paths.keogram,
+                dpi=cfg.keogram.modern_dpi if modern else cfg.keogram.dpi,
+                colormap=cmap,
+                colormap_crop=crop,
+                distance_ticks_km=cfg.keogram.distance_ticks_km,
+                distance_tick_labels=cfg.keogram.distance_tick_labels,
+                gap_factor=None,
+                show_colorbar=modern and cfg.keogram.show_colorbar,
+                value_label=value_label,
+                contour=modern and cfg.keogram.contour,
+                contour_levels=cfg.keogram.contour_levels,
+                interpolation=cfg.keogram.interpolation if modern else "nearest",
+                full_night_hours=cfg.keogram.full_night_hours,
+                full_night_width_px=cfg.keogram.full_night_width_px,
+                min_width_px=cfg.keogram.min_width_px,
+            )
+            written["keogram"] = paths.keogram.name
 
     if "raw" in only:
-        def _raw_iter():
-            n = frames.shape[2]
-            for i in range(n):
-                t = times[i]
-                yield compose_movie_frame(
-                    image=frames[:, :, i], vmin=vmin, vmax=vmax,
-                    x0=cal.x0, y0=cal.y0, R=cal.R,
-                    date_str=t.strftime("%Y-%m-%d"),
-                    time_str=t.strftime("%H:%M:%S UT"),
-                    site_label=cfg.site.label,
-                    site_name=cfg.site.name,
-                    band=night.band,
-                    markers=[{"name": m.name, "az_deg": m.az_deg, "r_frac": m.r_frac}
-                             for m in cfg.markers],
-                    colormap_name=cfg.movie.colormap,
-                    colormap_crop=cfg.movie.colormap_crop,
-                    is_first_or_last=(i == 0 or i == n - 1),
-                )
-        write_h264_video(_raw_iter(), paths.movie_raw,
-                         fps=fps, crf=cfg.movie.crf,
-                         pix_fmt=cfg.movie.pix_fmt, codec=cfg.movie.codec)
-        written["movie_raw"] = paths.movie_raw.name
+        if _should_write("movie_raw", paths.movie_raw):
+            raw_vmin, raw_vmax = robust_limits(frames, (1, 99)) if modern else (None, None)
+            def _raw_iter():
+                n = frames.shape[2]
+                for i in range(n):
+                    t = times[i]
+                    frame_vmin, frame_vmax = (raw_vmin, raw_vmax) if modern else matlab_get_range(frames[:, :, i])
+                    yield compose_movie_frame(
+                        image=frames[:, :, i], vmin=frame_vmin, vmax=frame_vmax,
+                        x0=cal.x0, y0=cal.y0, R=cal.R,
+                        date_str=t.strftime("%Y-%m-%d"),
+                        time_str=t.strftime("%H:%M:%S") + "UT",
+                        site_label=cfg.site.label,
+                        site_name=cfg.site.name,
+                        band=night.band,
+                        markers=[{"name": m.name, "az_deg": m.az_deg, "r_frac": m.r_frac}
+                                 for m in cfg.markers],
+                        colormap_name=cfg.movie.colormap,
+                        colormap_crop=cfg.movie.colormap_crop,
+                        is_first_or_last=(i == 0 or i == n - 1),
+                        output_size=output_size,
+                        clean_overlay=clean_overlay,
+                        label_font_size=15 if modern else 13,
+                    )
+            write_h264_video(_raw_iter(), paths.movie_raw,
+                             fps=fps, crf=crf,
+                             pix_fmt=cfg.movie.pix_fmt, codec=cfg.movie.codec)
+            written["movie_raw"] = paths.movie_raw.name
 
     if "diff" in only:
-        diff = running_mean_subtract(frames, time_seconds, cfg.difference.window_minutes)
-        sigma = float(np.std(diff))
-        clip = cfg.difference.clip_sigma * sigma
-        d_vmin, d_vmax = -clip, +clip
-        def _diff_iter():
-            n = diff.shape[2]
-            for i in range(n):
-                t = times[i]
-                yield compose_movie_frame(
-                    image=diff[:, :, i], vmin=d_vmin, vmax=d_vmax,
+        diff = previous_frame_difference(frames)
+        diff_times = times[1:]
+        if _should_write("movie_diff", paths.movie_diff):
+            d_global = symmetric_limits(diff, 99.0) if modern else None
+            def _diff_iter():
+                n = diff.shape[2]
+                for i in range(n):
+                    t = diff_times[i]
+                    d_vmin, d_vmax = d_global if modern else matlab_get_range(diff[:, :, i])
+                    yield compose_movie_frame(
+                        image=diff[:, :, i], vmin=d_vmin, vmax=d_vmax,
+                        x0=cal.x0, y0=cal.y0, R=cal.R,
+                        date_str=t.strftime("%Y-%m-%d"),
+                        time_str=t.strftime("%H:%M:%S") + "UT",
+                        site_label=cfg.site.label,
+                        site_name=cfg.site.name,
+                        band=night.band if not modern else f"{night.band} TD",
+                        markers=[],
+                        colormap_name=cfg.movie.colormap,
+                        colormap_crop=cfg.movie.colormap_crop,
+                        is_first_or_last=(i == 0 or i == n - 1),
+                        output_size=output_size,
+                        clean_overlay=clean_overlay,
+                        label_font_size=15 if modern else 13,
+                    )
+            write_h264_video(_diff_iter(), paths.movie_diff,
+                             fps=fps, crf=crf,
+                             pix_fmt=cfg.movie.pix_fmt, codec=cfg.movie.codec)
+            written["movie_diff"] = paths.movie_diff.name
+
+    if "wave" in only and modern:
+        if _should_write("movie_wave", paths.movie_wave):
+            wave = _wave_cube()
+            w_vmin, w_vmax = symmetric_limits(wave, cfg.wave.movie_percentile)
+            w_limit = max(abs(w_vmin), abs(w_vmax))
+            wave_display = signed_brightness_curve(wave, w_limit, cfg.wave.brightness_curve)
+            def _wave_iter():
+                n = wave_display.shape[2]
+                for i in range(n):
+                    t = times[i]
+                    yield compose_movie_frame(
+                        image=wave_display[:, :, i], vmin=-w_limit, vmax=w_limit,
+                        x0=cal.x0, y0=cal.y0, R=cal.R,
+                        date_str=t.strftime("%Y-%m-%d"),
+                        time_str=t.strftime("%H:%M:%S") + "UT",
+                        site_label=cfg.site.label,
+                        site_name=cfg.site.name,
+                        band=f"{night.band} wave",
+                        markers=[],
+                        colormap_name=cfg.keogram.wave_colormap,
+                        colormap_crop=(cfg.keogram.colormap_crop
+                                       if cfg.keogram.wave_colormap == "gray" else (0, 128)),
+                        is_first_or_last=(i == 0 or i == n - 1),
+                        output_size=output_size,
+                        clean_overlay=clean_overlay,
+                        label_font_size=15 if modern else 13,
+                    )
+            write_h264_video(_wave_iter(), paths.movie_wave,
+                             fps=fps, crf=crf,
+                             pix_fmt=cfg.movie.pix_fmt, codec=cfg.movie.codec)
+            written["movie_wave"] = paths.movie_wave.name
+
+    if "contact" in only and modern:
+        if _should_write("contact_sheet", paths.contact_sheet):
+            contact_diff = previous_frame_difference(frames)
+            contact_times = times[1:]
+            d_vmin, d_vmax = symmetric_limits(contact_diff, 99.0)
+            n = contact_diff.shape[2]
+            count = min(cfg.movie.contact_sheet_frames, n)
+            idxs = np.linspace(0, n - 1, count, dtype=int)
+            sheet_frames = []
+            for i in idxs:
+                t = contact_times[i]
+                rgb = compose_movie_frame(
+                    image=contact_diff[:, :, i], vmin=d_vmin, vmax=d_vmax,
                     x0=cal.x0, y0=cal.y0, R=cal.R,
                     date_str=t.strftime("%Y-%m-%d"),
-                    time_str=t.strftime("%H:%M:%S UT") + " (Δ)",
+                    time_str=t.strftime("%H:%M:%S") + "UT",
                     site_label=cfg.site.label,
                     site_name=cfg.site.name,
-                    band=f"{night.band} diff",
+                    band=f"{night.band} TD",
                     markers=[],
                     colormap_name=cfg.movie.colormap,
                     colormap_crop=cfg.movie.colormap_crop,
                     is_first_or_last=(i == 0 or i == n - 1),
+                    output_size=360,
+                    clean_overlay=True,
+                    label_font_size=15,
                 )
-        write_h264_video(_diff_iter(), paths.movie_diff,
-                         fps=fps, crf=cfg.movie.crf,
-                         pix_fmt=cfg.movie.pix_fmt, codec=cfg.movie.codec)
-        written["movie_diff"] = paths.movie_diff.name
+                sheet_frames.append((rgb, t.strftime("%H:%M UT")))
+            write_contact_sheet(sheet_frames, paths.contact_sheet)
+            written["contact_sheet"] = paths.contact_sheet.name
 
     elapsed = _time.time() - t_start
     payload = {
@@ -169,8 +288,15 @@ def process_night(nc_path: str | Path, out_dir: str | Path, cfg: Config, *,
         "fps": fps,
         "calibration": {"x0": cal.x0, "y0": cal.y0, "R": cal.R, "P": cal.P},
         "files": written,
+        "skipped_files": skipped,
         "elapsed_seconds": round(elapsed, 2),
     }
+    if "report" in only and modern:
+        if _should_write("report", paths.report):
+            report_files = {**written, **skipped}
+            write_html_report(paths.report, payload, report_files)
+            written["report"] = paths.report.name
+            payload["files"] = written
     write_json_sidecar(paths.json, payload)
     log.info("[%s %s] %d/%d frames, vmin=%.0f vmax=%.0f, %.1fs",
              night.date, night.band, frames.shape[2], night.intensity.shape[2],

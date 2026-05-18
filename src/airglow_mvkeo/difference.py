@@ -1,6 +1,19 @@
-"""Frame differencing via running-mean subtraction."""
+"""Frame differencing helpers."""
 from __future__ import annotations
 import numpy as np
+
+
+def previous_frame_difference(frames: np.ndarray) -> np.ndarray:
+    """Return MATLAB ``*_TD`` frames: current image minus previous image.
+
+    ``CreateMovNC(..., DI=1)`` initializes the first image as history and does
+    not write it, so the output has one fewer frame than the raw movie.
+    """
+    if frames.ndim != 3:
+        raise ValueError("frames must be 3D (H, W, N)")
+    if frames.shape[2] < 2:
+        return np.empty((*frames.shape[:2], 0), dtype=np.float32)
+    return np.diff(frames.astype(np.float32), axis=2)
 
 def running_mean_subtract(frames: np.ndarray, time_seconds: np.ndarray,
                           window_minutes: float) -> np.ndarray:
