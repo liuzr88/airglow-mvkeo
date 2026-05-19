@@ -10,6 +10,9 @@ def test_load_alo_config():
     assert cfg.site.name == "ALO"
     assert cfg.bands["OH"].altitude_km == 87
     assert cfg.bands["O5"].altitude_km == 96
+    assert cfg.bands["O6"].altitude_km == 250
+    assert cfg.bands["O2"].altitude_km == 94
+    assert cfg.bands["Na"].altitude_km == 90
     assert cfg.image.size_px == 512
 
 def test_calibration_sorted_ascending():
@@ -31,6 +34,7 @@ def test_movie_pix_fmt_yuv420p():
     cfg = load_config(CFG)
     assert cfg.movie.pix_fmt == "yuv420p"
     assert cfg.movie.web_output_size_px == cfg.keogram.full_night_width_px // 2
+    assert cfg.keogram.full_night_width_px == 1704
     assert cfg.keogram.height_px == 850
 
 def test_invalid_path_raises(tmp_path):

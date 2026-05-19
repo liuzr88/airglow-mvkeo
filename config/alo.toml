@@ -15,6 +15,12 @@ ut_offset_hours = -5
 altitude_km = 87
 [bands.O5]
 altitude_km = 96
+[bands.O6]
+altitude_km = 250
+[bands.O2]
+altitude_km = 94
+[bands.Na]
+altitude_km = 90
 
 [image]
 size_px = 512
@@ -81,7 +87,7 @@ pix_fmt = "yuv420p"
 colormap = "bone"
 colormap_crop = [4, 124]
 output_size_px = 540
-web_output_size_px = 568
+web_output_size_px = 852
 contact_sheet_frames = 12
 
 [keogram]
@@ -101,7 +107,7 @@ contour = false
 contour_levels = 80
 interpolation = "nearest"
 full_night_hours = 10
-full_night_width_px = 1136
+full_night_width_px = 1704
 height_px = 850
 min_width_px = 480
 

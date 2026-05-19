@@ -7,6 +7,7 @@ import traceback
 from pathlib import Path
 from typing import Iterable
 from .config import Config
+from .io import SUPPORTED_BANDS
 from .processing import process_night
 
 log = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ def _worker(args):
 def discover_files(year_dir: str | Path, band: str | None = None) -> list[Path]:
     p = Path(year_dir)
     files: list[Path] = []
-    bands = ["OH", "O5"] if band in (None, "all") else [band]
+    bands = SUPPORTED_BANDS if band in (None, "all") else [band]
     for b in bands:
         files.extend(sorted(p.glob(f"{b}*.nc")))
     return files

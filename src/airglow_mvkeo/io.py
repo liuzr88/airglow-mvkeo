@@ -24,7 +24,12 @@ def matlab_datenum_to_datetime(d):
         [base + timedelta(days=float(x) - _MATLAB_EPOCH_OFFSET) for x in arr.ravel()]
     ).reshape(arr.shape)
 
-_NAME_RE = re.compile(r"^(?P<band>OH|O5)(?P<date>\d{8})", re.IGNORECASE)
+SUPPORTED_BANDS = ("OH", "O5", "O6", "O2", "Na")
+_BAND_CANONICAL = {b.upper(): b for b in SUPPORTED_BANDS}
+_NAME_RE = re.compile(
+    rf"^(?P<band>{'|'.join(SUPPORTED_BANDS)})(?P<date>\d{{8}})",
+    re.IGNORECASE,
+)
 
 @dataclass(frozen=True)
 class NightData:
@@ -49,7 +54,7 @@ def parse_filename(p: Path) -> tuple[str, date]:
     m = _NAME_RE.match(p.stem)
     if not m:
         raise ValueError(f"unrecognized filename pattern: {p.name}")
-    band = m.group("band").upper()
+    band = _BAND_CANONICAL[m.group("band").upper()]
     s = m.group("date")
     return band, date(int(s[:4]), int(s[4:6]), int(s[6:8]))
 

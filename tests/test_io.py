@@ -5,7 +5,7 @@ import numpy as np
 import xarray as xr
 from airglow_mvkeo.io import (
     read_night, write_json_sidecar, output_paths,
-    matlab_datenum_to_datetime,
+    matlab_datenum_to_datetime, parse_filename, SUPPORTED_BANDS,
 )
 
 def test_datenum_known_value():
@@ -56,6 +56,15 @@ def test_output_paths_can_split_keogram_root(tmp_path):
     assert p.movie_raw == mv / "2018" / "OH20180101.mp4"
     assert p.movie_diff == mv / "2018" / "OH20180101_TD.mp4"
     assert p.report == mv / "2018" / "OH20180101_report.html"
+
+def test_parse_filename_supports_all_bands():
+    assert SUPPORTED_BANDS == ("OH", "O5", "O6", "O2", "Na")
+    for band in SUPPORTED_BANDS:
+        parsed, d = parse_filename(Path(f"{band}20250102.nc"))
+        assert parsed == band
+        assert d == date(2025, 1, 2)
+    parsed, _ = parse_filename(Path("na20250102.nc"))
+    assert parsed == "Na"
 
 def test_write_json_sidecar(tmp_path):
     p = tmp_path / "x.json"

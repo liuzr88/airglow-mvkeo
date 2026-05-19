@@ -11,6 +11,7 @@ os.environ.setdefault("MPLCONFIGDIR", "/private/tmp/airglow_mvkeo_matplotlib")
 
 from .config import load_config
 from .batch import run_year
+from .io import SUPPORTED_BANDS
 from .processing import process_night
 
 DEFAULT_CONFIG = Path(__file__).parent.parent.parent / "config" / "alo.toml"
@@ -18,7 +19,7 @@ DEFAULT_CONFIG = Path(__file__).parent.parent.parent / "config" / "alo.toml"
 def _add_common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--out", type=Path, help="output root directory")
     p.add_argument("--config", type=Path, default=DEFAULT_CONFIG, help="TOML config path")
-    p.add_argument("--band", choices=["OH", "O5", "all"], default="all")
+    p.add_argument("--band", choices=[*SUPPORTED_BANDS, "all"], default="all")
     p.add_argument("--overwrite", action="store_true")
     p.add_argument("--only", choices=["keogram", "raw", "diff", "wave", "contact", "report", "all"], default="all")
     p.add_argument("--style", choices=["matlab", "modern", "web"], default="matlab",
@@ -97,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if result.get("status") in ("ok", "dry_run", "skipped_existing") else 1
 
     if args.cmd == "run-date":
-        bands = ["OH", "O5"] if args.band == "all" else [args.band]
+        bands = list(SUPPORTED_BANDS) if args.band == "all" else [args.band]
         results = []
         for band in bands:
             fn = _date_file(cfg, args.date, band)
