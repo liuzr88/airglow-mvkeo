@@ -71,7 +71,7 @@ Movie names match `CreateMovNC.m`: raw movies are named like `OH20231122.mp4`, a
 ## Keograms
 Keograms are simple centerline stacks from the raw image cube. The W-E panel uses the center image row, `frames[y0, :, :]`; the S-N panel uses the center image column, `frames[:, x0, :]`. No wave filtering, temporal smoothing, brightness curve, contouring, or artificial gap columns are applied to the sampled values. The renderer only maps those samples to grayscale display levels and draws the axes/labels.
 
-Keogram widths are scaled by observing duration so horizontal pixels have a consistent time meaning from night to night. In the default ALO config, a full 10-hour night is 1136 px wide; shorter nights are proportionally narrower, with a minimum width for readability.
+Keogram widths are scaled by observing duration so horizontal pixels have a consistent time meaning from night to night, while the vertical size stays fixed across nights. In the default ALO config, a full 10-hour night is 1136 px wide by 850 px tall; shorter nights are proportionally narrower, with a minimum width for readability. Modern movie frames are sized to half the keogram width so raw and TD movies can sit side by side under a full-width keogram.
 
 ## Wave Enhancement
 The previous-frame TD movie is the preferred web movie for wave structure. `--only wave` remains available in modern/web style as an experimental movie product, but the default keogram is intentionally raw-centerline rather than wave-enhanced.

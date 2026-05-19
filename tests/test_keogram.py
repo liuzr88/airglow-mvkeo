@@ -1,5 +1,6 @@
 from datetime import datetime, timezone, timedelta
 import numpy as np
+from PIL import Image
 from airglow_mvkeo.keogram import (
     extract_slices, wrap_time_hours, insert_gaps, render_keogram,
     scaled_keogram_width,
@@ -50,6 +51,9 @@ def test_render_keogram_writes_jpg(tmp_path):
         distance_tick_labels=("-200","-100","0","+100","200"),
         full_night_hours=10,
         full_night_width_px=640,
+        height_px=420,
         min_width_px=240,
     )
     assert out.exists() and out.stat().st_size > 1000
+    with Image.open(out) as img:
+        assert img.size == (640, 420)

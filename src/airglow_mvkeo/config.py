@@ -76,6 +76,7 @@ class KeogramConfig:
     interpolation: str
     full_night_hours: float
     full_night_width_px: int
+    height_px: int
     min_width_px: int
 
 @dataclass(frozen=True)
@@ -169,6 +170,7 @@ def load_config(path: str | Path) -> Config:
             interpolation=keo_raw.get("interpolation", "nearest"),
             full_night_hours=keo_raw.get("full_night_hours", 10.0),
             full_night_width_px=keo_raw.get("full_night_width_px", 1136),
+            height_px=keo_raw.get("height_px", 850),
             min_width_px=keo_raw.get("min_width_px", 480),
         ),
         difference=DifferenceConfig(**raw["difference"]),

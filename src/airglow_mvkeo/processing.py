@@ -17,7 +17,7 @@ from .enhancement import (
     relative_perturbation, robust_limits, symmetric_limits,
     sigma_clipped_symmetric_limits, signed_brightness_curve, spatial_median3,
 )
-from .keogram import extract_slices, wrap_time_hours, render_keogram
+from .keogram import extract_slices, scaled_keogram_width, wrap_time_hours, render_keogram
 from .movie import write_h264_video
 from .overlays import compose_movie_frame
 from .report import write_contact_sheet, write_html_report
@@ -99,7 +99,20 @@ def process_night(nc_path: str | Path, out_dir: str | Path, cfg: Config, *,
     written: dict[str, str] = {}
     skipped: dict[str, str] = {}
     t_start = _time.time()
-    output_size = cfg.movie.web_output_size_px if modern else cfg.movie.output_size_px
+    hrs_for_layout = wrap_time_hours(times)
+    keogram_width_px = scaled_keogram_width(
+        hrs_for_layout,
+        cfg.keogram.full_night_hours,
+        cfg.keogram.full_night_width_px,
+        cfg.keogram.min_width_px,
+    )
+    movie_width_px = int(round(keogram_width_px / 2))
+    if movie_width_px % 2:
+        movie_width_px += 1
+    output_size = (
+        max(2, movie_width_px)
+        if modern else cfg.movie.output_size_px
+    )
     crf = cfg.movie.web_crf if modern else cfg.movie.crf
     wave_cube: np.ndarray | None = None
 
@@ -123,13 +136,12 @@ def process_night(nc_path: str | Path, out_dir: str | Path, cfg: Config, *,
     if "keogram" in only:
         if _should_write("keogram", paths.keogram):
             we, sn = extract_slices(frames, x0=cal.x0, y0=cal.y0)
-            hrs = wrap_time_hours(times)
             kvmin = kvmax = None
             cmap = cfg.keogram.colormap
             crop = cfg.keogram.colormap_crop
             value_label = "Intensity"
             render_keogram(
-                we=we, sn=sn, times=hrs,
+                we=we, sn=sn, times=hrs_for_layout,
                 x0=cal.x0, y0=cal.y0, R=cal.R,
                 altitude_km=band_cfg.altitude_km, fov_deg=cfg.image.fov_deg,
                 image_size=cfg.image.size_px,
@@ -150,6 +162,7 @@ def process_night(nc_path: str | Path, out_dir: str | Path, cfg: Config, *,
                 interpolation=cfg.keogram.interpolation if modern else "nearest",
                 full_night_hours=cfg.keogram.full_night_hours,
                 full_night_width_px=cfg.keogram.full_night_width_px,
+                height_px=cfg.keogram.height_px,
                 min_width_px=cfg.keogram.min_width_px,
             )
             written["keogram"] = paths.keogram.name

@@ -75,11 +75,12 @@ def scaled_keogram_width(times: np.ndarray, full_night_hours: float,
     frac = min(duration_hours / full_night_hours, 1.0)
     return int(max(min_width_px, round(full_night_width_px * frac)))
 
-def _resize_to_width(path: Path, width_px: int) -> None:
+def _resize_to_size(path: Path, width_px: int, height_px: int | None = None) -> None:
     with Image.open(path) as img:
-        if img.width == width_px:
+        if height_px is None:
+            height_px = max(1, round(img.height * width_px / img.width))
+        if img.width == width_px and img.height == height_px:
             return
-        height_px = max(1, round(img.height * width_px / img.width))
         resized = img.resize((width_px, height_px), Image.Resampling.LANCZOS)
         save_kwargs = {"quality": 92, "optimize": True} if path.suffix.lower() in {".jpg", ".jpeg"} else {}
         resized.save(path, **save_kwargs)
@@ -100,6 +101,7 @@ def render_keogram(*, we: np.ndarray, sn: np.ndarray, times: np.ndarray,
                    interpolation: str = "nearest",
                    full_night_hours: float | None = None,
                    full_night_width_px: int | None = None,
+                   height_px: int | None = None,
                    min_width_px: int = 480) -> None:
     """Render the 2-panel MATLAB-style keogram and save to JPG/PNG."""
     if len(distance_ticks_km) != len(distance_tick_labels):
@@ -190,4 +192,4 @@ def render_keogram(*, we: np.ndarray, sn: np.ndarray, times: np.ndarray,
         target_width = scaled_keogram_width(
             t_g, full_night_hours, full_night_width_px, min_width_px
         )
-        _resize_to_width(out, target_width)
+        _resize_to_size(out, target_width, height_px)

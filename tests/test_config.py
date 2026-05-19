@@ -30,6 +30,8 @@ def test_filter_thresholds_present():
 def test_movie_pix_fmt_yuv420p():
     cfg = load_config(CFG)
     assert cfg.movie.pix_fmt == "yuv420p"
+    assert cfg.movie.web_output_size_px == cfg.keogram.full_night_width_px // 2
+    assert cfg.keogram.height_px == 850
 
 def test_invalid_path_raises(tmp_path):
     with pytest.raises(FileNotFoundError):

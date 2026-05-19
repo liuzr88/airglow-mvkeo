@@ -81,7 +81,7 @@ pix_fmt = "yuv420p"
 colormap = "bone"
 colormap_crop = [4, 124]
 output_size_px = 540
-web_output_size_px = 540
+web_output_size_px = 568
 contact_sheet_frames = 12
 
 [keogram]
@@ -102,6 +102,7 @@ contour_levels = 80
 interpolation = "nearest"
 full_night_hours = 10
 full_night_width_px = 1136
+height_px = 850
 min_width_px = 480
 
 [difference]
