@@ -15,6 +15,25 @@ uv venv && uv pip install -e .
 
 ## Usage
 
+### Convert FITS to NetCDF
+```bash
+uv run airglow-fits-to-nc-batch 2025 \
+  --data-root ~/OneDriveResearch/Data/ALOASI \
+  --nc-root ~/OneDriveResearch/Data/ALOASI/NC \
+  --channels OH O5 O6 O2 Na \
+  --overwrite 0
+```
+
+This reads nightly FITS folders from `<DATA_ROOT>/<YYYY>/<YYYYMMDD>/` and writes NetCDF files to `<DATA_ROOT>/NC/<YYYY>/`. Use `--overwrite 1` to rebuild existing NetCDF files.
+
+For one channel only:
+```bash
+uv run airglow-fits-to-nc 2025 OH \
+  --data-root ~/OneDriveResearch/Data/ALOASI \
+  --nc-root ~/OneDriveResearch/Data/ALOASI/NC \
+  --overwrite 0
+```
+
 ### One night
 ```bash
 uv run airglow-mvkeo run-night /path/OH20180101.nc --out ./out
@@ -99,6 +118,8 @@ uv run pytest -m visual       # opt-in visual regression (requires fixtures)
 - `movie.py` — ffmpeg-piped H.264 writer (deadlock-safe, `yuv420p` for browsers)
 - `keogram.py` — slice extraction, gap insertion, 2-panel matplotlib render
 - `report.py` — contact sheet and HTML report output
+- `fits_to_nc.py` — FITS night folders to MATLAB-compatible NetCDF files
+- `fits_to_nc_batch.py` — multi-year, multi-channel FITS-to-NetCDF runner
 - `processing.py` — per-night driver gluing read → filter → render → JSON
 - `batch.py` — multiprocessing year orchestrator
 - `cli.py` — argparse entrypoint
