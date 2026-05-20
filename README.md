@@ -16,11 +16,16 @@ uv venv && uv pip install -e .
 ## Usage
 
 ### Convert FITS to NetCDF
+To scan all available years and all science bands, converting only missing or bad NetCDF files:
+```bash
+uv run airglow-convert-missing
+```
+
+This default command reads FITS folders from `~/OneDriveResearch/Data/ALOASI/<YYYY>/<YYYYMMDD>/`, writes to `~/OneDriveResearch/Data/ALOASI/NC/<YYYY>/`, and processes `OH O5 O6 O2 Na` with overwrite off.
+
+For a specific year:
 ```bash
 uv run airglow-fits-to-nc-batch 2025 \
-  --data-root ~/OneDriveResearch/Data/ALOASI \
-  --nc-root ~/OneDriveResearch/Data/ALOASI/NC \
-  --channels OH O5 O6 O2 Na \
   --overwrite 0
 ```
 

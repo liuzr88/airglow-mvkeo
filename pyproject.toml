@@ -17,6 +17,7 @@ dependencies = [
 airglow-mvkeo = "airglow_mvkeo.cli:main"
 airglow-fits-to-nc = "airglow_mvkeo.fits_to_nc:main"
 airglow-fits-to-nc-batch = "airglow_mvkeo.fits_to_nc_batch:main"
+airglow-convert-missing = "airglow_mvkeo.fits_to_nc_batch:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-cov>=5.0"]

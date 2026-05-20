@@ -12,7 +12,8 @@ from typing import Iterable
 from .fits_to_nc import convert_year
 
 
-DEFAULT_CHANNELS = ("OH", "O5", "O2", "O6", "bias", "dark", "Na")
+DEFAULT_DATA_ROOT = Path("/Users/alanliu/OneDriveResearch/Data/ALOASI")
+DEFAULT_CHANNELS = ("OH", "O5", "O6", "O2", "Na")
 
 
 def is_mounted(path: Path) -> bool:
@@ -47,6 +48,17 @@ def normalize_smb_share(share: str) -> str:
     if share.startswith("smb://"):
         return "//" + share[len("smb://") :]
     return share
+
+
+def discover_years(data_root: Path) -> list[int]:
+    """Return years that have raw FITS night folders under ``data_root``."""
+    years: list[int] = []
+    if not data_root.is_dir():
+        return years
+    for path in sorted(data_root.iterdir()):
+        if path.is_dir() and len(path.name) == 4 and path.name.isdigit():
+            years.append(int(path.name))
+    return years
 
 
 def ensure_mounted(args: argparse.Namespace) -> None:
@@ -88,7 +100,12 @@ def ensure_mounted(args: argparse.Namespace) -> None:
 
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("years", nargs="+", type=int, help="One or more years to convert, e.g. 2023 2024.")
+    parser.add_argument(
+        "years",
+        nargs="*",
+        type=int,
+        help="Years to convert, e.g. 2023 2024. Omit to discover all year folders.",
+    )
     parser.add_argument(
         "--channels",
         nargs="+",
@@ -98,14 +115,13 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--data-root",
         type=Path,
-        required=True,
-        help="Root containing year folders, e.g. /Volumes/NAS/ALOASI.",
+        default=DEFAULT_DATA_ROOT,
+        help=f"Root containing year folders. Default: {DEFAULT_DATA_ROOT}",
     )
     parser.add_argument(
         "--nc-root",
         type=Path,
-        required=True,
-        help="Root where NetCDF year folders should be written, e.g. /Volumes/NAS/ALOASI/NC.",
+        help="Root where NetCDF year folders should be written. Default: <data-root>/NC.",
     )
     parser.add_argument("--overwrite", type=int, choices=(0, 1), default=0)
     parser.add_argument(
@@ -142,11 +158,23 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
 def main(argv: Iterable[str] | None = None) -> None:
     args = parse_args(argv)
     ensure_mounted(args)
+    args.data_root = args.data_root.expanduser()
+    args.nc_root = (args.nc_root.expanduser() if args.nc_root else args.data_root / "NC")
     if not args.data_root.is_dir():
         raise FileNotFoundError(f"Data root is not mounted or does not exist: {args.data_root}")
     args.nc_root.mkdir(parents=True, exist_ok=True)
 
-    for year in args.years:
+    years = args.years or discover_years(args.data_root)
+    if not years:
+        raise FileNotFoundError(f"No year folders found under: {args.data_root}")
+
+    print(f"Data root: {args.data_root}")
+    print(f"NetCDF root: {args.nc_root}")
+    print(f"Years: {' '.join(str(y) for y in years)}")
+    print(f"Channels: {' '.join(args.channels)}")
+    print(f"Overwrite: {bool(args.overwrite)}")
+
+    for year in years:
         for channel in args.channels:
             print(f"\n=== {year} {channel} ===")
             convert_year(
