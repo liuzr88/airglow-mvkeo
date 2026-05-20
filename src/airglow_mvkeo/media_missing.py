@@ -7,6 +7,7 @@ import logging
 import multiprocessing as mp
 import os
 import traceback
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
@@ -38,35 +39,58 @@ def discover_nc_files(nc_root: Path, years: Iterable[int], band: str) -> list[Pa
     return files
 
 
-def missing_artifacts_for_nc(
+def current_month_bounds(now: datetime | None = None) -> tuple[datetime, datetime]:
+    """Return local-time bounds for the current calendar month."""
+    now = now.astimezone() if now else datetime.now().astimezone()
+    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if start.month == 12:
+        end = start.replace(year=start.year + 1, month=1)
+    else:
+        end = start.replace(month=start.month + 1)
+    return start, end
+
+
+def file_is_from_current_month(path: Path, *, now: datetime | None = None) -> bool:
+    """Use file modification time as the media creation freshness check."""
+    start, end = current_month_bounds(now)
+    mtime = datetime.fromtimestamp(path.stat().st_mtime).astimezone()
+    return start <= mtime < end
+
+
+def artifacts_to_create_for_nc(
     nc_path: Path,
     *,
     mv_root: Path,
     kg_root: Path,
     style: str,
-) -> list[str]:
+    now: datetime | None = None,
+) -> dict[str, str]:
     band, date = parse_filename(nc_path)
     paths = output_paths(mv_root, band, date, style=style, keogram_out_dir=kg_root)
-    missing: list[str] = []
-    if not paths.keogram.exists():
-        missing.append("keogram")
-    if not paths.movie_raw.exists():
-        missing.append("raw")
-    if not paths.movie_diff.exists():
-        missing.append("diff")
-    return missing
+    artifact_paths = {
+        "keogram": paths.keogram,
+        "raw": paths.movie_raw,
+        "diff": paths.movie_diff,
+    }
+    needed: dict[str, str] = {}
+    for artifact, path in artifact_paths.items():
+        if not path.exists():
+            needed[artifact] = "missing"
+        elif not file_is_from_current_month(path, now=now):
+            needed[artifact] = "older_than_current_month"
+    return needed
 
 
 def _worker(args):
-    nc_path, mv_root, kg_root, cfg, style, clean_overlay, overwrite = args
+    nc_path, mv_root, kg_root, cfg, style, clean_overlay, artifacts = args
     try:
         return process_night(
             nc_path,
             mv_root,
             cfg,
             keogram_out_dir=kg_root,
-            overwrite=overwrite,
-            only=CORE_ARTIFACTS,
+            overwrite=True,
+            only=artifacts,
             style=style,
             resume_artifacts=True,
             clean_overlay=clean_overlay,
@@ -112,15 +136,20 @@ def main(argv: Iterable[str] | None = None) -> int:
         raise FileNotFoundError(f"No NetCDF year folders found under: {nc_root}")
 
     nc_files = discover_nc_files(nc_root, years, args.band)
-    to_process: list[Path] = []
-    planned: dict[str, list[str]] = {}
+    to_process: list[tuple[Path, set[str]]] = []
+    planned: dict[str, dict[str, str]] = {}
+    now = datetime.now().astimezone()
     for nc_path in nc_files:
-        missing = ["overwrite"] if args.overwrite else missing_artifacts_for_nc(
-            nc_path, mv_root=mv_root, kg_root=kg_root, style=style
+        needed = (
+            {artifact: "overwrite" for artifact in CORE_ARTIFACTS}
+            if args.overwrite
+            else artifacts_to_create_for_nc(
+                nc_path, mv_root=mv_root, kg_root=kg_root, style=style, now=now
+            )
         )
-        if missing:
-            to_process.append(nc_path)
-            planned[str(nc_path)] = missing
+        if needed:
+            to_process.append((nc_path, set(needed)))
+            planned[str(nc_path)] = needed
 
     summary = {
         "years": years,
@@ -141,8 +170,8 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     workers = args.workers or max(1, (os.cpu_count() or 2) - 1)
     worker_args = [
-        (path, mv_root, kg_root, cfg, style, args.clean_overlay, args.overwrite)
-        for path in to_process
+        (path, mv_root, kg_root, cfg, style, args.clean_overlay, artifacts)
+        for path, artifacts in to_process
     ]
     if workers == 1:
         results = [_worker(item) for item in worker_args]

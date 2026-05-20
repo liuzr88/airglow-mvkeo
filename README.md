@@ -50,6 +50,8 @@ To scan all existing NetCDF year folders and create only missing keograms, raw m
 uv run airglow-create-missing-media
 ```
 
+Existing media files are considered current only if their file timestamp is in the current calendar month. Missing files and older files are regenerated; files from this month are left untouched.
+
 Useful limits:
 ```bash
 uv run airglow-create-missing-media 2025 --band all --workers 4
