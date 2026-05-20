@@ -44,6 +44,18 @@ uv run airglow-fits-to-nc 2025 OH \
 uv run airglow-mvkeo run-night /path/OH20180101.nc --out ./out
 ```
 
+### Create Missing Media
+To scan all existing NetCDF year folders and create only missing keograms, raw movies, and TD movies in the standard `KG`/`MV` directories:
+```bash
+uv run airglow-create-missing-media
+```
+
+Useful limits:
+```bash
+uv run airglow-create-missing-media 2025 --band all --workers 4
+uv run airglow-create-missing-media 2025 --band O6 --dry-run
+```
+
 ### One date from the configured ALO data root
 ```bash
 uv run airglow-mvkeo run-date 20231010 --band OH --style matlab
@@ -125,6 +137,7 @@ uv run pytest -m visual       # opt-in visual regression (requires fixtures)
 - `report.py` — contact sheet and HTML report output
 - `fits_to_nc.py` — FITS night folders to MATLAB-compatible NetCDF files
 - `fits_to_nc_batch.py` — multi-year, multi-channel FITS-to-NetCDF runner
+- `media_missing.py` — create missing KG/MV products from existing NetCDF files
 - `processing.py` — per-night driver gluing read → filter → render → JSON
 - `batch.py` — multiprocessing year orchestrator
 - `cli.py` — argparse entrypoint
